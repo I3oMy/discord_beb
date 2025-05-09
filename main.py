@@ -15,7 +15,8 @@ CONFIG_FILE = "config.json"
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+
 
 
 
@@ -203,6 +204,16 @@ async def on_ready():
     for guild in bot.guilds:
         await bot.tree.sync(guild=guild)
     print(f"✅ Synced commands to all servers.")
+
+
+@bot.event
+async def on_application_command_error(interaction: Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CheckFailure):
+        # ถ้าเป็น CheckFailure (เช่น ไม่มีสิทธิ์)
+        await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้", ephemeral=True)
+    else:
+        # ข้อผิดพลาดอื่น ๆ
+        await interaction.response.send_message("⚠️ เกิดข้อผิดพลาดขณะประมวลผลคำสั่ง", ephemeral=True)    
 
 
 @bot.event
@@ -623,7 +634,16 @@ async def upload_picture(interaction: discord.Interaction):
     view.add_item(button)
 
     # ส่งคำสั่งให้ผู้ใช้คลิกปุ่ม
-    await interaction.response.send_message("กรุณาคลิกปุ่มเพื่ออัปโหลดรูปภาพ", view=view)  
+    await interaction.response.send_message("กรุณาคลิกปุ่มเพื่ออัปโหลดรูปภาพ", view=view)
+
+
+
+@bot.tree.command(name="admincommand", description="คำสั่งที่สามารถใช้ได้เฉพาะ Admin หรือ Moderator")
+async def admincommand(interaction: Interaction):
+    if not is_moderator_or_admin_slash(interaction):
+        await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้", ephemeral=True)
+        return
+    await interaction.response.send_message("คำสั่งนี้สามารถใช้งานได้")
 
 
 server_on()    
