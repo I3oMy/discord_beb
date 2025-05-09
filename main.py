@@ -165,18 +165,6 @@ async def on_member_remove(member):
 @bot.event
 async def on_message(message):
     # ถ้าผู้ใช้ส่งไฟล์รูปภาพ
-    if message.attachments:
-        for attachment in message.attachments:
-            if attachment.filename.endswith(('png', 'jpg', 'jpeg', 'gif')):
-                # ส่งรูปภาพใน Embed
-                embed = discord.Embed(
-                    title="คุณส่งรูปภาพมา",
-                    description=f"นี่คือรูปที่คุณส่งมา, {message.author.mention}",
-                    color=discord.Color.blue()
-                )
-                embed.set_image(url=attachment.url)  # ใช้ URL ของไฟล์ที่ผู้ใช้แนบมา
-                await message.channel.send(embed=embed)
-
     # อย่าลืมให้ bot process คำสั่งด้วย
     await bot.process_commands(message)
 
