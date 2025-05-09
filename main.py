@@ -13,6 +13,22 @@ CONFIG_FILE = "config.json"
 
 
 
+
+def has_any_role_id(role_ids: list[int]):
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if not interaction.user or not hasattr(interaction.user, "roles"):
+            return False
+        return any(role.id in role_ids for role in interaction.user.roles)
+    return app_commands.check(predicate)
+
+@app_commands.command(name="setwelcome", description="ตั้งค่าข้อความต้อนรับ")
+@has_any_role_id([123456789012345678, 987654321098765432])  # แทนด้วย role IDs จริงของคุณ
+async def setwelcome(interaction: discord.Interaction):
+    await interaction.response.send_message("คุณมีสิทธิใช้คำสั่งนี้!", ephemeral=True)
+
+
+
+
 class WelcomeModal(discord.ui.Modal):
     def __init__(self, title_val="", description_val="", image_val=""):
         super().__init__(title="ตั้งค่าข้อความต้อนรับ")
@@ -83,6 +99,67 @@ class WelcomeModal(discord.ui.Modal):
         )
 
 
+class GoodbyeModal(discord.ui.Modal):
+    def __init__(self, title_val="", description_val="", image_val=""):
+        super().__init__(title="ตั้งค่าข้อความออกจากเซิร์ฟเวอร์")
+
+        self.title_input = discord.ui.TextInput(
+            label="หัวข้อ Embed (Title)",
+            placeholder="เช่น ลาก่อน {user}...",
+            default=title_val,
+            max_length=100,
+            required=False
+        )
+        self.description_input = discord.ui.TextInput(
+            label="เนื้อหา Embed (Description)",
+            placeholder="พิมพ์ข้อความเช่น หวังว่าจะได้พบกันใหม่!",
+            default=description_val,
+            style=discord.TextStyle.paragraph,
+            max_length=1000,
+            required=False
+        )
+        self.image_input = discord.ui.TextInput(
+            label="ลิงก์รูปภาพ (ถ้ามี)",
+            placeholder="https://...",
+            default=image_val,
+            required=False
+        )
+
+        self.add_item(self.title_input)
+        self.add_item(self.description_input)
+        self.add_item(self.image_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        config = load_config()
+        guild_id = str(interaction.guild.id)
+        data = config.get(guild_id, {})
+
+        title = self.title_input.value or data.get("goodbye_title", "👋 ลาก่อน!")
+        message = self.description_input.value or data.get("goodbye_message", "{user} ได้ออกจากเซิร์ฟเวอร์")
+        image_url = self.image_input.value or data.get("goodbye_image_url", "")
+
+        data["goodbye_title"] = title
+        data["goodbye_message"] = message
+        data["goodbye_image_url"] = image_url
+        data["enabled"] = True
+
+        config[guild_id] = data
+        save_config(config)
+
+        embed = discord.Embed(
+            title=title.replace("{user}", interaction.user.mention),
+            description=message.replace("{user}", interaction.user.mention),
+            color=discord.Color.red()
+        )
+        if image_url:
+            embed.set_image(url=image_url)
+        embed.set_footer(text=f"เหลือสมาชิก {interaction.guild.member_count} คนในเซิร์ฟเวอร์ 😢")
+
+        await interaction.response.send_message(
+            content=f"👋 ลาก่อน {interaction.user.mention} (แค่ทดสอบนะ!)",
+            embed=embed,
+            ephemeral=True
+        )
 
 
 
@@ -164,7 +241,8 @@ async def on_member_remove(member):
 
 @bot.event
 async def on_message(message):
-    # ถ้าผู้ใช้ส่งไฟล์รูปภาพ
+
+
     # อย่าลืมให้ bot process คำสั่งด้วย
     await bot.process_commands(message)
 
@@ -407,13 +485,13 @@ async def embedout(interaction: discord.Interaction):
     guild_id = str(interaction.guild.id)
     data = config.get(guild_id, {})
 
-    # ส่งค่าที่มีอยู่ไปให้ modal สำหรับข้อความออกจากเซิร์ฟเวอร์
-    modal = WelcomeModal(
-        title_val=data.get("goodbye_title", ""),  # ใช้ title สำหรับข้อความออก
-        description_val=data.get("goodbye_message", ""),  # ใช้ข้อความออก
-        image_val=data.get("goodbye_image_url", "")  # ใช้ image_url สำหรับข้อความออก
+    modal = GoodbyeModal(
+        title_val=data.get("goodbye_title", ""),
+        description_val=data.get("goodbye_message", ""),
+        image_val=data.get("goodbye_image_url", "")
     )
     await interaction.response.send_modal(modal)
+
 
 
 
