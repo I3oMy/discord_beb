@@ -7,6 +7,7 @@ from discord.ext import commands
 from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
+from discord.app_commands import CheckFailure
 
 
 CONFIG_FILE = "config.json"
@@ -41,6 +42,12 @@ def has_any_role_id(role_ids: list[int]):
             return False
         return any(role.id in role_ids for role in interaction.user.roles)
     return app_commands.check(predicate)
+
+
+
+async def check_admin_permission(interaction):
+    print(f"User {interaction.user} permissions: {interaction.user.guild_permissions}")
+    return interaction.user.guild_permissions.administrator
 
 
 
