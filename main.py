@@ -13,6 +13,63 @@ CONFIG_FILE = "config.json"
 
 
 
+def is_moderator_or_admin(ctx):
+    return ctx.author.guild_permissions.administrator or "Moderator" in [role.name for role in ctx.author.roles]
+
+# คำสั่ง setwelcome (เช็คสิทธิ์ admin หรือ Moderator)
+@bot.command()
+@commands.check(is_moderator_or_admin)
+async def setwelcome(ctx):
+    # โค้ดตั้งค่าข้อความต้อนรับ
+    await ctx.send("ข้อความต้อนรับถูกตั้งค่าแล้ว")
+
+# คำสั่ง setout (เช็คสิทธิ์ admin หรือ Moderator)
+@bot.command()  # ใช้ @bot.command() แทน @bot.commands.check
+@commands.check(is_moderator_or_admin)
+async def setout(ctx):
+    # โค้ดตั้งค่าข้อความออก
+    await ctx.send("ข้อความออกถูกตั้งค่าแล้ว")
+
+# คำสั่ง embedwelcome (เช็คสิทธิ์ admin หรือ Moderator)
+@bot.command()
+@commands.check(is_moderator_or_admin)
+async def embedwelcome(ctx):
+    embed = discord.Embed(
+        title="ข้อความต้อนรับที่ตั้งไว้",
+        description="แสดงรายละเอียดข้อความต้อนรับที่ได้ตั้งไว้ในระบบ",
+        color=discord.Color.green()
+    )
+    await ctx.send(embed=embed)
+
+# คำสั่ง embedout (เช็คสิทธิ์ admin หรือ Moderator)
+@bot.command()
+@commands.check(is_moderator_or_admin)
+async def embedout(ctx):
+    embed = discord.Embed(
+        title="ข้อความออกที่ตั้งไว้",
+        description="แสดงรายละเอียดข้อความออกที่ได้ตั้งไว้ในระบบ",
+        color=discord.Color.red()
+    )
+    await ctx.send(embed=embed)
+
+# คำสั่ง previewwelcome (เช็คสิทธิ์ admin หรือ Moderator)
+@bot.command()
+@commands.check(is_moderator_or_admin)
+async def previewwelcome(ctx):
+    # แสดงข้อความต้อนรับแบบพรีวิว
+    preview_msg = "นี่คือตัวอย่างข้อความต้อนรับ"
+    await ctx.send(f"พรีวิวข้อความต้อนรับ: {preview_msg}")
+
+# คำสั่ง previewout (เช็คสิทธิ์ admin หรือ Moderator)
+@bot.command()
+@commands.check(is_moderator_or_admin)
+async def previewout(ctx):
+    # แสดงข้อความออกแบบพรีวิว
+    preview_msg = "นี่คือตัวอย่างข้อความออก"
+    await ctx.send(f"พรีวิวข้อความออก: {preview_msg}")
+
+
+
 
 def has_any_role_id(role_ids: list[int]):
     async def predicate(interaction: discord.Interaction) -> bool:
