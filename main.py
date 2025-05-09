@@ -12,6 +12,10 @@ from datetime import datetime
 CONFIG_FILE = "config.json"
 
 
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+
 
 def is_moderator_or_admin(ctx):
     return ctx.author.guild_permissions.administrator or "Moderator" in [role.name for role in ctx.author.roles]
