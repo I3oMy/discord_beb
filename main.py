@@ -21,10 +21,7 @@ def has_any_role_id(role_ids: list[int]):
         return any(role.id in role_ids for role in interaction.user.roles)
     return app_commands.check(predicate)
 
-@app_commands.command(name="setwelcome", description="ตั้งค่าข้อความต้อนรับ")
-@has_any_role_id([123456789012345678, 987654321098765432])  # แทนด้วย role IDs จริงของคุณ
-async def setwelcome(interaction: discord.Interaction):
-    await interaction.response.send_message("คุณมีสิทธิใช้คำสั่งนี้!", ephemeral=True)
+
 
 
 
@@ -280,6 +277,7 @@ async def namecommand(interaction: discord.Interaction, ชื่อ: str):
 
 
 @bot.tree.command(name="setwelcome", description="ตั้งค่าระบบต้อนรับ")
+@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
 @app_commands.describe(
     channel="ห้องที่จะให้บอทส่งข้อความต้อนรับ (หากต้องการเปลี่ยนช่อง)",
     message="ข้อความต้อนรับ (ใส่ {user} เพื่อแทนชื่อผู้เข้า) (ถ้าจะเปลี่ยน)",
@@ -434,6 +432,7 @@ async def previewout(interaction: discord.Interaction, user: discord.User = None
 
 
 @bot.tree.command(name="setout", description="ตั้งค่าระบบออกจากเซิร์ฟเวอร์")
+@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
 @app_commands.describe(
     channel="ห้องที่จะให้บอทส่งข้อความออกจากเซิร์ฟเวอร์ (หากต้องการเปลี่ยนช่อง)",
     message="ข้อความออกจากเซิร์ฟเวอร์ (ใส่ {user} เพื่อแทนชื่อผู้ที่ออก)",
@@ -480,6 +479,7 @@ async def setout(interaction: discord.Interaction, channel: discord.TextChannel 
 
 
 @bot.tree.command(name="embedout", description="แก้ไขข้อความการออกจากเซิร์ฟเวอร์แบบ Embed")
+@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
 async def embedout(interaction: discord.Interaction):
     config = load_config()
     guild_id = str(interaction.guild.id)
@@ -559,6 +559,7 @@ async def upload_image(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="embedwelcome", description="แก้ไขข้อความต้อนรับแบบ Embed")
+@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
 async def embedwelcome(interaction: discord.Interaction):
     config = load_config()
     guild_id = str(interaction.guild.id)
