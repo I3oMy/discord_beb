@@ -100,13 +100,13 @@ async def check_admin_permission(interaction):
 
 
 class WelcomeModal(discord.ui.Modal):
-    def __init__(self, title_val="", description_val="", image_val=""):
+    def __init__(self, title_val="", description_val="", image_val="", color_val=""):
         super().__init__(title="ตั้งค่าข้อความต้อนรับ")
 
         self.title_input = discord.ui.TextInput(
             label="หัวข้อ Embed (Title)",
             placeholder="เช่น ยินดีต้อนรับ {user}!",
-            default=title_val,  # ใช้ default
+            default=title_val,
             max_length=100,
             required=False
         )
@@ -124,12 +124,18 @@ class WelcomeModal(discord.ui.Modal):
             default=image_val,
             required=False
         )
+        self.color_input = discord.ui.TextInput(
+            label="สี Embed (เช่น #3498db หรือเว้นว่างไว้)",
+            placeholder="#3498db",
+            default=color_val,
+            required=False,
+            max_length=7
+        )
 
-        # เพิ่ม inputs เข้ามาใน modal
         self.add_item(self.title_input)
         self.add_item(self.description_input)
         self.add_item(self.image_input)
-
+        self.add_item(self.color_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         config = load_config()
@@ -137,31 +143,37 @@ class WelcomeModal(discord.ui.Modal):
 
         data = config.get(guild_id, {})
 
-        # รับค่าที่กรอกจาก modal
         title_input = self.title_input.value or data.get("title", "🎉 ยินดีต้อนรับ!")
         description_input = self.description_input.value or data.get("message", "ขอให้สนุกกับการอยู่ที่นี่!")
         image_url = self.image_input.value or data.get("image_url", "")
+        color_input = self.color_input.value or data.get("color", "#5865F2")  # Discord blurple
 
-        # บันทึกใหม่ใน config
+        # ตรวจสอบและแปลง hex color
+        try:
+            embed_color = int(color_input.replace("#", ""), 16)
+        except ValueError:
+            embed_color = 0x5865F2  # fallback เป็น blurple
+
+        # บันทึก config
         data["title"] = title_input
         data["message"] = description_input
         data["image_url"] = image_url
+        data["color"] = color_input
         data["enabled"] = True
 
         config[guild_id] = data
         save_config(config)
 
-        # เตรียม embed
+        # สร้าง Embed
         embed = discord.Embed(
             title=title_input.replace("{user}", interaction.user.mention),
             description=description_input.replace("{user}", interaction.user.mention),
-            color=discord.Color.blurple()
+            color=embed_color
         )
         if image_url:
             embed.set_image(url=image_url)
         embed.set_footer(text=f"ตอนนี้เรามี {interaction.guild.member_count} คนในเซิร์ฟเวอร์ 💬")
 
-        # ส่งข้อความต้อนรับนอก embed พร้อมแท็ก user
         await interaction.response.send_message(
             content=f"🎉 ยินดีต้อนรับ {interaction.user.mention}!",
             embed=embed,
@@ -169,8 +181,9 @@ class WelcomeModal(discord.ui.Modal):
         )
 
 
+
 class GoodbyeModal(discord.ui.Modal):
-    def __init__(self, title_val="", description_val="", image_val=""):
+    def __init__(self, title_val="", description_val="", image_val="", color_val=""):
         super().__init__(title="ตั้งค่าข้อความออกจากเซิร์ฟเวอร์")
 
         self.title_input = discord.ui.TextInput(
@@ -194,10 +207,18 @@ class GoodbyeModal(discord.ui.Modal):
             default=image_val,
             required=False
         )
+        self.color_input = discord.ui.TextInput(
+            label="สี Embed (Hex เช่น #e74c3c หรือเว้นว่างไว้)",
+            placeholder="#e74c3c",
+            default=color_val,
+            required=False,
+            max_length=7
+        )
 
         self.add_item(self.title_input)
         self.add_item(self.description_input)
         self.add_item(self.image_input)
+        self.add_item(self.color_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         config = load_config()
@@ -207,10 +228,17 @@ class GoodbyeModal(discord.ui.Modal):
         title = self.title_input.value or data.get("goodbye_title", "👋 ลาก่อน!")
         message = self.description_input.value or data.get("goodbye_message", "{user} ได้ออกจากเซิร์ฟเวอร์")
         image_url = self.image_input.value or data.get("goodbye_image_url", "")
+        color_input = self.color_input.value or data.get("goodbye_color", "#e74c3c")  # แดง default
+
+        try:
+            embed_color = int(color_input.replace("#", ""), 16)
+        except ValueError:
+            embed_color = 0xe74c3c
 
         data["goodbye_title"] = title
         data["goodbye_message"] = message
         data["goodbye_image_url"] = image_url
+        data["goodbye_color"] = color_input
         data["enabled"] = True
 
         config[guild_id] = data
@@ -219,7 +247,7 @@ class GoodbyeModal(discord.ui.Modal):
         embed = discord.Embed(
             title=title.replace("{user}", interaction.user.mention),
             description=message.replace("{user}", interaction.user.mention),
-            color=discord.Color.red()
+            color=embed_color
         )
         if image_url:
             embed.set_image(url=image_url)
@@ -230,6 +258,7 @@ class GoodbyeModal(discord.ui.Modal):
             embed=embed,
             ephemeral=True
         )
+
 
 
 
@@ -677,6 +706,21 @@ async def embedwelcome(interaction: discord.Interaction):
     )
     await interaction.response.send_modal(modal)
 
+    embed = discord.Embed(
+        title=data.get("title", "🎉 ยินดีต้อนรับ!"),
+        description=data.get("message", "ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์!"),
+        color=discord.Color.purple()
+    )
+
+    # ใช้ pytz เพื่อแปลงเวลาเป็นเวลาไทย
+    thailand_tz = pytz.timezone('Asia/Bangkok')
+    current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')  # เวลาในรูปแบบของไทย
+
+    # เพิ่ม footer ลงใน Embed พร้อมแสดงเวลาปัจจุบัน
+    embed.set_footer(text=f"สมาชิกใหม่เข้ามา! เวลา: {current_time} | เซิร์ฟเวอร์: {interaction.guild.name}")
+
+    await interaction.followup.send(embed=embed)
+
 
 
 @bot.tree.command(name="upload_picture", description="Upload an image to the server")
@@ -701,6 +745,12 @@ async def upload_picture(interaction: discord.Interaction):
                     color=discord.Color.green()
                 )
                 embed.set_image(url=attachment.url)  # ใช้ URL ของไฟล์ที่แนบมา
+                thailand_tz = pytz.timezone('Asia/Bangkok')
+                current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')  # เวลาในรูปแบบของไทย
+
+                # เพิ่ม footer ลงใน Embed พร้อมแสดงเวลาปัจจุบัน
+                embed.set_footer(text=f"เวลาที่อัปโหลด: {current_time} | เซิร์ฟเวอร์: {interaction.guild.name}")
+
                 await interaction.response.send_message(embed=embed)
 
     # ผูกปุ่มเข้ากับ callback
