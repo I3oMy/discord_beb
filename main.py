@@ -2,12 +2,15 @@ import discord
 import json
 import os 
 import pytz  
+import re
+from discord.app_commands import CheckFailure
 from myserver import server_on
 from discord.ext import commands
 from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
 from discord.app_commands import CheckFailure
+
 
 
 CONFIG_FILE = "config.json"
@@ -20,6 +23,9 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 
 
 
+
+def is_valid_url(url: str) -> bool:
+    return re.match(r'^https?://', url) is not None
 
 def is_moderator_or_admin_slash(interaction: discord.Interaction) -> bool:
     if interaction.guild is None:
@@ -36,12 +42,18 @@ async def handle_check_failure(interaction: discord.Interaction, error):
 
 
 
-def has_any_role_id(role_ids: list[int]):
-    async def predicate(interaction: discord.Interaction) -> bool:
-        if not interaction.user or not hasattr(interaction.user, "roles"):
+def has_any_role_name(role_names: list[str]):
+    role_names_lower = [name.lower() for name in role_names]
+    
+    def predicate(interaction: discord.Interaction) -> bool:
+        if interaction.user.id == interaction.guild.owner_id:
+            return True
+        if not hasattr(interaction.user, "roles"):
             return False
-        return any(role.id in role_ids for role in interaction.user.roles)
+        return any(role.name.lower() in role_names_lower for role in interaction.user.roles)
+
     return app_commands.check(predicate)
+
 
 
 
@@ -313,13 +325,15 @@ async def namecommand(interaction: discord.Interaction, ชื่อ: str):
 
 
 @bot.tree.command(name="setwelcome", description="ตั้งค่าระบบต้อนรับ")
-@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 @app_commands.describe(
     channel="ห้องที่จะให้บอทส่งข้อความต้อนรับ (หากต้องการเปลี่ยนช่อง)",
     message="ข้อความต้อนรับ (ใส่ {user} เพื่อแทนชื่อผู้เข้า) (ถ้าจะเปลี่ยน)",
     image_url="ลิงก์รูปหรือ GIF (หากต้องการเปลี่ยนรูป)"
 )
 async def setwelcome(interaction: discord.Interaction, channel: discord.TextChannel = None, message: str = None, image_url: str = None):
+    
+
     config = load_config()
     data = config.get(str(interaction.guild.id), {})
 
@@ -362,6 +376,7 @@ async def setwelcome(interaction: discord.Interaction, channel: discord.TextChan
 
 
 @bot.tree.command(name="previewwelcome", description="ทดสอบระบบต้อนรับโดยใช้ตัวอย่าง")
+@has_any_role_name(["คนดูแล", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 @app_commands.describe(user="ผู้ใช้ตัวอย่าง (ใส่ชื่อหรือ mention)")
 async def previewwelcome(interaction: discord.Interaction, user: discord.User = None):
     if not user:
@@ -411,6 +426,7 @@ async def previewwelcome(interaction: discord.Interaction, user: discord.User = 
 
 
 @bot.tree.command(name="previewout", description="ทดสอบระบบออกจากเซิร์ฟเวอร์โดยใช้ตัวอย่าง")
+@has_any_role_name(["คนดูแล", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 @app_commands.describe(user="ผู้ใช้ตัวอย่าง (ใส่ชื่อหรือ mention)")
 async def previewout(interaction: discord.Interaction, user: discord.User = None):
     if not user:
@@ -468,13 +484,16 @@ async def previewout(interaction: discord.Interaction, user: discord.User = None
 
 
 @bot.tree.command(name="setout", description="ตั้งค่าระบบออกจากเซิร์ฟเวอร์")
-@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 @app_commands.describe(
     channel="ห้องที่จะให้บอทส่งข้อความออกจากเซิร์ฟเวอร์ (หากต้องการเปลี่ยนช่อง)",
     message="ข้อความออกจากเซิร์ฟเวอร์ (ใส่ {user} เพื่อแทนชื่อผู้ที่ออก)",
     image_url="ลิงก์รูปหรือ GIF (หากต้องการเปลี่ยนรูป)"
 )
 async def setout(interaction: discord.Interaction, channel: discord.TextChannel = None, message: str = None, image_url: str = None):
+
+    
+
     config = load_config()
     data = config.get(str(interaction.guild.id), {})
 
@@ -515,7 +534,7 @@ async def setout(interaction: discord.Interaction, channel: discord.TextChannel 
 
 
 @bot.tree.command(name="embedout", description="แก้ไขข้อความการออกจากเซิร์ฟเวอร์แบบ Embed")
-@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 async def embedout(interaction: discord.Interaction):
     config = load_config()
     guild_id = str(interaction.guild.id)
@@ -595,7 +614,7 @@ async def upload_image(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="embedwelcome", description="แก้ไขข้อความต้อนรับแบบ Embed")
-@has_any_role_id([123456789012345678, 987654321098765432])  # ใส่ role IDs ที่ต้องการ
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 async def embedwelcome(interaction: discord.Interaction):
     config = load_config()
     guild_id = str(interaction.guild.id)
@@ -653,6 +672,6 @@ async def admincommand(interaction: Interaction):
     await interaction.response.send_message("คำสั่งนี้สามารถใช้งานได้")
 
 
-server_on()    
+server_on()   
 
 bot.run(os.getenv('TOKEN'))
