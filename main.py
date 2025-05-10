@@ -1,4 +1,3 @@
-
 import discord
 import json
 import os 
@@ -11,11 +10,7 @@ from discord.ext import commands
 from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
-from discord.app_commands import CommandInvokeError
-from discord.ext.commands import has_any_role
-from discord.ui import Button, View
-from discord import app_commands, Interaction
-
+from discord.app_commands import CheckFailure
 
 
 
@@ -23,30 +18,9 @@ CONFIG_FILE = "config.json"
 
 
 intents = discord.Intents.default()
-intents.message_content = True  # เปิดให้ใช้งาน message content
 intents.guilds = True
 intents.members = True
-bot = commands.Bot(command_prefix='!', intents=intents)
-
-
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        return {}
-    try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        print("Error: JSON file is corrupted. Returning empty configuration.")
-        return {}
-    
-
-def save_config(config):
-    try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4)
-    except IOError as e:
-        print(f"Error: Unable to save config. {e}")    
-
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 
 
 menu_list = [
@@ -103,7 +77,6 @@ async def handle_check_failure(interaction: discord.Interaction, error):
 
 
 
-# ตรวจสอบบทบาท
 def has_any_role_name(role_names: list[str]):
     role_names_lower = [name.lower() for name in role_names]
     
@@ -124,16 +97,6 @@ async def check_admin_permission(interaction):
     return interaction.user.guild_permissions.administrator
 
 
-class EmbedRole(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-    @commands.command(name="hello")
-    async def hello(self, ctx):
-        await ctx.send("Hello from EmbedRole!")
-
-async def setup(bot):
-    await bot.add_cog(EmbedRole(bot))
 
 
 class WelcomeModal(discord.ui.Modal):
@@ -297,106 +260,33 @@ class GoodbyeModal(discord.ui.Modal):
         )
 
 
-class RoleReactionView(discord.ui.View):
-    def __init__(self, role_mapping: dict, timeout: int = 300):
-        super().__init__(timeout=timeout)
-        self.role_mapping = role_mapping
 
-        # สร้างปุ่มสำหรับแต่ละ Role
-        for custom_id, role in role_mapping.items():
-            self.add_item(
-                discord.ui.Button(label=f"รับ Role {role.name}", style=discord.ButtonStyle.primary, custom_id=custom_id)
-            )
 
-    async def interaction_check(self, interaction: Interaction) -> bool:
-        # ตรวจสอบ Role ที่เกี่ยวข้องกับ Custom ID ของปุ่ม
-        role = self.role_mapping.get(interaction.data["custom_id"])
-        if not role:
-            await interaction.response.send_message("❌ ไม่พบ Role ที่เกี่ยวข้อง", ephemeral=True)
-            return False
 
-        # เพิ่มหรือลบ Role ให้กับผู้ใช้
-        member = interaction.user
-        if role in member.roles:
-            await member.remove_roles(role)
-            await interaction.response.send_message(f"❌ เอา Role `{role.name}` ออกแล้ว", ephemeral=True)
-        else:
-            await member.add_roles(role)
-            await interaction.response.send_message(f"✅ รับ Role `{role.name}` แล้ว", ephemeral=True)
-        return True
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        return {}
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-class RoleReaction(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
+def save_config(config):
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=4)
 
-    @app_commands.command(name="embedrole", description="สร้าง Embed พร้อมปุ่มสำหรับรับ Role")
-    @app_commands.describe(
-        channel="เลือกห้องที่จะแสดง Embed",
-        red_role="Role สำหรับปุ่มสีแดง",
-        green_role="Role สำหรับปุ่มสีเขียว"
-    )
-    async def embedrole(
-        self,
-        interaction: discord.Interaction,
-        channel: discord.TextChannel,
-        red_role: discord.Role,
-        green_role: discord.Role
-    ):
-        # สร้าง Embed
-        embed = discord.Embed(
-            title="รับ Role ด้วยปุ่ม!",
-            description="กดปุ่มด้านล่างเพื่อตั้งค่าบทบาทของคุณ!",
-            color=discord.Color.blurple()
-        )
+bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 
-        # สร้าง Role Mapping
-        role_mapping = {
-            "embedrole_red": red_role,
-            "embedrole_green": green_role,
-        }
 
-        # ส่ง Embed และ View ไปยังห้องที่กำหนด
-        await channel.send(embed=embed, view=RoleReactionView(role_mapping))
-        await interaction.response.send_message(f"✅ Embed ถูกส่งไปที่ {channel.mention} แล้ว!", ephemeral=True)
-
-    @app_commands.command(name="setrole", description="ตั้งค่าระบบ Role Reaction")
-    @app_commands.describe(
-        emoji="อิโมจิที่ต้องการ",
-        role="Role ที่ต้องการให้สมาชิกได้รับ",
-        description="คำอธิบาย (ข้อความอธิบายบทบาท)"
-    )
-    async def setrole(self, interaction: Interaction, emoji: str, role: discord.Role, description: str):
-        # สร้าง Embed
-        embed = discord.Embed(
-            title="Role Reaction",
-            description=f"{emoji} - {role.mention}\n{description}",
-            color=discord.Color.blue()
-        )
-
-        # สร้าง Role Mapping สำหรับปุ่มเดียว
-        role_mapping = {
-            "setrole_button": role,
-        }
-
-        # ส่ง Embed และ View ไปยังแชท
-        await interaction.response.send_message(embed=embed, view=RoleReactionView(role_mapping))
-
-# ฟังก์ชันสำหรับเพิ่ม Cog
-async def setup(bot):
-    await bot.add_cog(RoleReaction(bot))
 
 
 
 
 @bot.event
 async def on_ready():
-    try:
-        # ซิงค์คำสั่งใหม่
-        await bot.tree.sync()
-        print("✅ ซิงค์คำสั่งสำเร็จ!")
-    except Exception as e:
-        print(f"❌ เกิดข้อผิดพลาดในการซิงค์คำสั่ง: {e}")
-
+    print("Bot is ready!")
+    # ซิงค์คำสั่งให้กับเซิร์ฟเวอร์ทั้งหมด
+    for guild in bot.guilds:
+        await bot.tree.sync(guild=guild)
+    print(f"✅ Synced commands to all servers.")
 
 
 @bot.event
@@ -462,103 +352,6 @@ async def on_member_remove(member):
 
         await channel.send(embed=embed)
 
-
-@bot.event
-async def on_application_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    if isinstance(error, discord.app_commands.errors.CommandInvokeError):
-        await interaction.response.send_message("❌ เกิดข้อผิดพลาดในคำสั่ง", ephemeral=True)
-        print(f"Error: {error}")
-
-
-# Event: เมื่อมีคนลบ Reaction
-@bot.event
-async def on_raw_reaction_remove(payload):
-    if payload.guild_id is None:
-        return  # ข้ามข้อความใน DM
-
-    config = load_config()
-    guild_id = str(payload.guild_id)
-
-    if guild_id not in config:
-        return
-
-    emoji = str(payload.emoji)
-    if emoji not in config[guild_id]:
-        return
-
-    role_id = config[guild_id][emoji]["role_id"]
-    guild = bot.get_guild(payload.guild_id)
-    role = guild.get_role(role_id)
-    member = guild.get_member(payload.user_id)
-
-    if role and member:
-        await member.remove_roles(role)
-        print(f"❌ Removed {role.name} from {member.name}")
-
-
-# Event: เมื่อมีคนกด Reaction
-@bot.event
-async def on_raw_reaction_add(payload):
-    if payload.guild_id is None:
-        return  # ข้ามข้อความใน DM
-
-    config = load_config()
-    guild_id = str(payload.guild_id)
-
-    if guild_id not in config:
-        return
-
-    emoji = str(payload.emoji)
-    if emoji not in config[guild_id]:
-        return
-
-    role_id = config[guild_id][emoji]["role_id"]
-    guild = bot.get_guild(payload.guild_id)
-    role = guild.get_role(role_id)
-    member = guild.get_member(payload.user_id)
-
-    if role and member:
-        await member.add_roles(role)
-        print(f"✅ Added {role.name} to {member.name}")
-
-
-@bot.event
-async def on_member_remove(member):
-    # ตรวจสอบการตั้งค่าข้อความออกจากเซิร์ฟเวอร์
-    config = load_config()
-    data = config.get(str(member.guild.id), {})
-
-    # เลือกช่องทางการส่งข้อความ
-    channel = discord.utils.get(member.guild.text_channels, name="goodbye")  # หรือใส่ ID แทน
-    if not channel:
-        return
-
-    # รับค่าข้อความออกจากเซิร์ฟเวอร์และแทนที่ {user} ด้วยชื่อผู้ใช้
-    text = data.get("goodbye_message", "ขอโทษที่คุณต้องจากไป {user}").replace("{user}", member.mention)
-
-    # สร้าง embed สำหรับข้อความการออกจากเซิร์ฟเวอร์
-    embed = discord.Embed(
-        title=data.get("goodbye_title", "👋 ลาก่อน..."),
-        description=text,
-        color=discord.Color.red()
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-
-    # เช็คว่ามี URL รูปภาพหรือไม่
-    if data.get("goodbye_image_url"):
-        embed.set_image(url=data["goodbye_image_url"])
-
-    # เพิ่มเวลาใน footer
-    thailand_tz = pytz.timezone('Asia/Bangkok')
-    current_time = datetime.now(thailand_tz).strftime('%Y-%m-%d %H:%M:%S')
-
-    embed.set_footer(text=f"เหลือสมาชิก {member.guild.member_count} คนในเซิร์ฟเวอร์ 😢 | เวลา: {current_time}")
-
-    # ส่ง Embed ไปยังช่องที่ตั้งค่าไว้
-    await channel.send(embed=embed)
-
-
-
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -609,6 +402,7 @@ async def send_image(ctx):
 
 
 
+
 @bot.tree.command(name="setwelcome", description="ตั้งค่าระบบต้อนรับ")
 @has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 @app_commands.describe(
@@ -617,48 +411,44 @@ async def send_image(ctx):
     image_url="ลิงก์รูปหรือ GIF (หากต้องการเปลี่ยนรูป)"
 )
 async def setwelcome(interaction: discord.Interaction, channel: discord.TextChannel = None, message: str = None, image_url: str = None):
-    try:
-        # โหลดการตั้งค่า
-        config = load_config()
-        if config is None:
-            await interaction.response.send_message("เกิดข้อผิดพลาดในการโหลดการตั้งค่า", ephemeral=True)
+    
+
+    config = load_config()
+    data = config.get(str(interaction.guild.id), {})
+
+    # ตรวจสอบว่ามีการตั้งค่าช่องไว้หรือไม่
+    if "channel_id" not in data:
+        # ถ้ายังไม่ตั้งค่าช่อง ให้บังคับเลือกช่องในครั้งแรก
+        if not channel:
+            await interaction.response.send_message("กรุณาตั้งค่าช่องต้อนรับก่อน ด้วยคำสั่ง `/setwelcome` ครั้งแรก", ephemeral=True)
             return
+        data["channel_id"] = channel.id  # ถ้าไม่มีการตั้งค่าช่อง ให้ตั้งค่าใหม่
 
-        guild_id = str(interaction.guild.id)
-        data = config.get(guild_id, {})
+    # ถ้าผู้ใช้ต้องการเปลี่ยนห้อง, อัปเดต channel_id
+    if channel:
+        data["channel_id"] = channel.id  # เปลี่ยนห้องที่ตั้งค่า
 
-        # ตรวจสอบว่ามีการตั้งค่าช่องไว้หรือไม่
-        if "channel_id" not in data:
-            if not channel:
-                await interaction.response.send_message("กรุณาตั้งค่าช่องต้อนรับก่อน ด้วยคำสั่ง `/setwelcome` ครั้งแรก", ephemeral=True)
-                return
-            data["channel_id"] = channel.id
+    # อัพเดตแค่ข้อความต้อนรับ หรือรูปภาพ ถ้าได้รับ
+    if message:
+        data["message"] = message  # อัปเดตข้อความต้อนรับ
+    if image_url:
+        data["image_url"] = image_url  # อัปเดตรูปภาพ
 
-        # อัปเดตห้องข้อความต้อนรับ
-        if channel:
-            data["channel_id"] = channel.id
-        if message:
-            data["message"] = message
-        if image_url:
-            data["image_url"] = image_url
+    data["enabled"] = True  # เปิดใช้งานระบบต้อนรับ
 
-        data["enabled"] = True
-        config[guild_id] = data
-        save_config(config)
+    config[str(interaction.guild.id)] = data
+    save_config(config)
 
-        # แจ้งผลการตั้งค่า
-        channel = interaction.guild.get_channel(data["channel_id"])  # ดึงช่องที่ตั้งค่าไว้
-        if message and image_url and channel:
-            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่และรูปภาพใหม่.", ephemeral=True)
-        elif message and channel:
-            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่.", ephemeral=True)
-        elif image_url and channel:
-            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมรูปภาพใหม่.", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention}.", ephemeral=True)
-
-    except Exception as e:
-        await interaction.response.send_message(f"เกิดข้อผิดพลาด: {str(e)}", ephemeral=True) 
+    # แจ้งผลการตั้งค่า
+    channel = interaction.guild.get_channel(data["channel_id"])  # ดึงช่องที่ตั้งค่าไว้
+    if message and image_url and channel:
+        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่และรูปภาพใหม่.", ephemeral=True)
+    elif message and channel:
+        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่.", ephemeral=True)
+    elif image_url and channel:
+        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมรูปภาพใหม่.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention}.", ephemeral=True)
 
 
 
@@ -668,32 +458,26 @@ async def setwelcome(interaction: discord.Interaction, channel: discord.TextChan
 @has_any_role_name(["คนดูแล", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 @app_commands.describe(user="ผู้ใช้ตัวอย่าง (ใส่ชื่อหรือ mention)")
 async def previewwelcome(interaction: discord.Interaction, user: discord.User = None):
-    # ตรวจสอบว่า Interaction ถูกตอบกลับไปแล้วหรือยัง
-    if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
-    else:
-        # แจ้งเตือนว่ามีการตอบกลับไปแล้ว
-        print("Interaction นี้ถูกตอบกลับไปแล้ว")
-        return
-
     if not user:
         user = interaction.user
 
-    # โหลดและตรวจสอบ config
     config = load_config()
     data = config.get(str(interaction.guild.id))
     if not data or not data.get("enabled", True):
-        await interaction.followup.send("❌ ระบบต้อนรับไม่ได้เปิดใช้งาน", ephemeral=True)
+        await interaction.response.send_message("❌ ระบบต้อนรับไม่ได้เปิดใช้งาน", ephemeral=True)
         return
 
-    # ตรวจสอบช่อง (channel)
     channel = interaction.guild.get_channel(data["channel_id"])
     if not channel:
-        await interaction.followup.send("❌ ไม่พบช่องที่ตั้งค่าไว้", ephemeral=True)
+        await interaction.response.send_message("❌ ไม่พบช่องที่ตั้งค่าไว้", ephemeral=True)
         return
+
+    # แจ้งการดำเนินการ
+    await interaction.response.defer(ephemeral=True)  # ให้ตอบกลับได้ทันที
 
     # เตรียมข้อความและ embed
     text = data["message"].replace("{user}", user.mention)
+
     title = f"{data.get('title', '🎉 ยินดีต้อนรับ!')}".replace("{user}", user.mention)
 
     embed = discord.Embed(
@@ -706,12 +490,13 @@ async def previewwelcome(interaction: discord.Interaction, user: discord.User = 
     if data.get("image_url"):
         embed.set_image(url=data["image_url"])
 
-    # ใช้ pytz เพื่อแสดงเวลาไทย
+    # ใช้ pytz เพื่อแปลงเวลาเป็นเวลาไทย
     thailand_tz = pytz.timezone('Asia/Bangkok')
-    current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')
+    current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')  # แสดงเวลาในรูปแบบของไทย
+
     embed.set_footer(text=f"ตอนนี้เรามี {interaction.guild.member_count} คนในเซิร์ฟเวอร์ 💬 | เวลา: {current_time}")
 
-    # ส่งข้อความต้อนรับ
+    # ส่งข้อความข้างนอก embed ด้วย content
     await interaction.followup.send(
         content=f"🎉 ยินดีต้อนรับ {user.mention}!",
         embed=embed,
@@ -843,6 +628,51 @@ async def embedout(interaction: discord.Interaction):
 
 
 
+
+@bot.event
+async def on_member_remove(member):
+    # ตรวจสอบการตั้งค่าข้อความออกจากเซิร์ฟเวอร์
+    config = load_config()
+    data = config.get(str(member.guild.id), {})
+
+    # เลือกช่องทางการส่งข้อความ
+    channel = discord.utils.get(member.guild.text_channels, name="goodbye")  # หรือใส่ ID แทน
+    if not channel:
+        return
+
+    # รับค่าข้อความออกจากเซิร์ฟเวอร์และแทนที่ {user} ด้วยชื่อผู้ใช้
+    text = data.get("goodbye_message", "ขอโทษที่คุณต้องจากไป {user}").replace("{user}", member.mention)
+
+    # สร้าง embed สำหรับข้อความการออกจากเซิร์ฟเวอร์
+    embed = discord.Embed(
+        title=data.get("goodbye_title", "👋 ลาก่อน..."),
+        description=text,
+        color=discord.Color.red()
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+
+    # เช็คว่ามี URL รูปภาพหรือไม่
+    if data.get("goodbye_image_url"):
+        embed.set_image(url=data["goodbye_image_url"])
+
+    # เพิ่มเวลาใน footer
+    thailand_tz = pytz.timezone('Asia/Bangkok')
+    current_time = datetime.now(thailand_tz).strftime('%Y-%m-%d %H:%M:%S')
+
+    embed.set_footer(text=f"เหลือสมาชิก {member.guild.member_count} คนในเซิร์ฟเวอร์ 😢 | เวลา: {current_time}")
+
+    # ส่ง Embed ไปยังช่องที่ตั้งค่าไว้
+    await channel.send(embed=embed)
+
+
+
+
+
+
+from discord.ui import Button, View
+
+
+
 @bot.tree.command(name="upload_image", description="Upload an image to the server")
 async def upload_image(interaction: discord.Interaction):
     # สร้างปุ่มให้ผู้ใช้กดเพื่อเลือกไฟล์
@@ -942,40 +772,6 @@ async def admincommand(interaction: Interaction):
     await interaction.response.send_message("คำสั่งนี้สามารถใช้งานได้")
 
 
-
-# คำสั่งสร้างข้อความ Role Reaction
-@bot.tree.command(name="createrole", description="สร้างข้อความ Role Reaction")
-@app_commands.describe(channel="ห้องที่ต้องการส่งข้อความ Role Reaction")
-@has_any_role_name(["คนดูแล", "Moderator", "Admin"])
-async def createrole(interaction: discord.Interaction, channel: discord.TextChannel):
-    config = load_config()
-    guild_id = str(interaction.guild.id)
-
-    if guild_id not in config or not config[guild_id]:
-        await interaction.response.send_message("❌ ยังไม่มีการตั้งค่า Role Reaction สำหรับเซิร์ฟเวอร์นี้", ephemeral=True)
-        return
-
-    embed = discord.Embed(
-        title="📜 Role Reaction",
-        description="กดอิโมจิเพื่อรับยศตามที่คุณต้องการ!",
-        color=discord.Color.blurple()
-    )
-
-    # สร้างข้อความ Embed พร้อม Reaction
-    for emoji, data in config[guild_id].items():
-        role = interaction.guild.get_role(data["role_id"])
-        if role:
-            embed.add_field(name=f"{emoji} {role.name}", value=data["description"], inline=False)
-
-    message = await channel.send(embed=embed)
-
-    # เพิ่ม Reaction ตามที่ตั้งค่าไว้
-    for emoji in config[guild_id]:
-        await message.add_reaction(emoji)
-
-    await interaction.response.send_message(f"✅ สร้างข้อความ Role Reaction ในห้อง {channel.mention} แล้ว!", ephemeral=True)
-
-server_on()
-
+server_on()   
 
 bot.run(os.getenv('TOKEN'))
