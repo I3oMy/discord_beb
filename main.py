@@ -341,8 +341,8 @@ def save_config(config):
 async def on_ready():
     print("Bot is ready!")
     # ซิงค์คำสั่งให้กับเซิร์ฟเวอร์ทั้งหมด
-    for guild in bot.guilds:
-        await bot.tree.sync()
+    for guild in bot.guilds:    
+        await bot.tree.sync(guild=guild)
     print(f"✅ Synced commands to all servers.")
 
 
@@ -838,12 +838,19 @@ async def admincommand(interaction: Interaction):
 
 
 @bot.tree.command(name="setrole", description="ตั้งค่าระบบ Role Reaction")
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])
+@app_commands.checks.has_permissions(administrator=True)
 @app_commands.describe(
     emoji="อิโมจิที่ต้องการ",
     role="Role ที่ต้องการให้สมาชิกได้รับ",
     description="คำอธิบาย (ข้อความอธิบายบทบาท)"
 )
-@app_commands.checks.has_permissions(administrator=True)
+async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
+    # โค้ดของคำสั่ง
+    emoji="อิโมจิที่ต้องการ",
+    role="Role ที่ต้องการให้สมาชิกได้รับ",
+    description="คำอธิบาย (ข้อความอธิบายบทบาท)"
+
 async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
     config = load_config()
     guild_id = str(interaction.guild.id)
