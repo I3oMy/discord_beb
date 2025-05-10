@@ -11,9 +11,7 @@ from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
 from discord.app_commands import CheckFailure
-from dotenv import load_dotenv
 
-load_dotenv()
 
 CONFIG_FILE = "config.json"
 
