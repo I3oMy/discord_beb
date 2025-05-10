@@ -11,17 +11,17 @@ from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
 from discord.app_commands import CheckFailure
+from dotenv import load_dotenv
 
-
+load_dotenv()
 
 CONFIG_FILE = "config.json"
 
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.guilds = True
 intents.members = True
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
-
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 menu_list = [
     "ข้าวกระเพรา",
@@ -273,20 +273,16 @@ def save_config(config):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4)
 
-bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
-
-
-
-
 
 
 @bot.event
 async def on_ready():
     print("Bot is ready!")
-    # ซิงค์คำสั่งให้กับเซิร์ฟเวอร์ทั้งหมด
-    for guild in bot.guilds:
-        await bot.tree.sync(guild=guild)
-    print(f"✅ Synced commands to all servers.")
+    try:
+        await bot.tree.sync()
+        print(f"✅ Commands synced globally.")
+    except Exception as e:
+        print(f"Error syncing commands: {e}")
 
 
 @bot.event
@@ -337,20 +333,6 @@ async def on_member_join(member):
     )
 
 
-@bot.event
-async def on_member_remove(member):
-    channel = discord.utils.get(member.guild.text_channels, name="goodbye")  # หรือใส่ ID แทน
-    if channel:
-        embed = discord.Embed(
-            title="👋 ลาก่อน...",
-            description=f"{member.name} ออกจากเซิร์ฟเวอร์แล้ว",
-            color=discord.Color.red()
-        )
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_image(url="https://media.tenor.com/YmcBY9nlAwsAAAAC/cid-kagenou-eminence-in-shadow.gif")
-        embed.set_footer(text=f"เหลือสมาชิก {member.guild.member_count} คนในเซิร์ฟเวอร์ 😢")
-
-        await channel.send(embed=embed)
 
 @bot.event
 async def on_message(message):
