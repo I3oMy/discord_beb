@@ -324,7 +324,11 @@ async def on_member_join(member):
     if data.get("image_url"):
         embed.set_image(url=data["image_url"])
 
-    embed.set_footer(text=f"ตอนนี้เรามี {member.guild.member_count} คนในเซิร์ฟเวอร์ 💬")
+    thailand_tz = pytz.timezone('Asia/Bangkok')
+    current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')
+
+    # 🧾 ใส่ footer ที่มีชื่อผู้ใช้ + เวลา + จำนวนสมาชิก
+    embed.set_footer(text=f"สมาชิกใหม่: {member.name} | เวลา: {current_time} | ทั้งหมด {member.guild.member_count} คน")
 
     # ส่งข้อความข้างนอก embed
     await channel.send(
