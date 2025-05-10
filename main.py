@@ -13,6 +13,7 @@ from discord import ui, Interaction
 from datetime import datetime
 from discord.app_commands import CommandInvokeError
 from discord.ext.commands import has_any_role
+from discord.ui import Button, View
 
 
 
@@ -21,9 +22,10 @@ CONFIG_FILE = "config.json"
 
 
 intents = discord.Intents.default()
+intents.message_content = True  # เปิดให้ใช้งาน message content
 intents.guilds = True
 intents.members = True
-bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 
 def load_config():
@@ -417,6 +419,103 @@ async def on_member_remove(member):
 
         await channel.send(embed=embed)
 
+
+@bot.event
+async def on_application_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    if isinstance(error, discord.app_commands.errors.CommandInvokeError):
+        await interaction.response.send_message("❌ เกิดข้อผิดพลาดในคำสั่ง", ephemeral=True)
+        print(f"Error: {error}")
+
+
+# Event: เมื่อมีคนลบ Reaction
+@bot.event
+async def on_raw_reaction_remove(payload):
+    if payload.guild_id is None:
+        return  # ข้ามข้อความใน DM
+
+    config = load_config()
+    guild_id = str(payload.guild_id)
+
+    if guild_id not in config:
+        return
+
+    emoji = str(payload.emoji)
+    if emoji not in config[guild_id]:
+        return
+
+    role_id = config[guild_id][emoji]["role_id"]
+    guild = bot.get_guild(payload.guild_id)
+    role = guild.get_role(role_id)
+    member = guild.get_member(payload.user_id)
+
+    if role and member:
+        await member.remove_roles(role)
+        print(f"❌ Removed {role.name} from {member.name}")
+
+
+# Event: เมื่อมีคนกด Reaction
+@bot.event
+async def on_raw_reaction_add(payload):
+    if payload.guild_id is None:
+        return  # ข้ามข้อความใน DM
+
+    config = load_config()
+    guild_id = str(payload.guild_id)
+
+    if guild_id not in config:
+        return
+
+    emoji = str(payload.emoji)
+    if emoji not in config[guild_id]:
+        return
+
+    role_id = config[guild_id][emoji]["role_id"]
+    guild = bot.get_guild(payload.guild_id)
+    role = guild.get_role(role_id)
+    member = guild.get_member(payload.user_id)
+
+    if role and member:
+        await member.add_roles(role)
+        print(f"✅ Added {role.name} to {member.name}")
+
+
+@bot.event
+async def on_member_remove(member):
+    # ตรวจสอบการตั้งค่าข้อความออกจากเซิร์ฟเวอร์
+    config = load_config()
+    data = config.get(str(member.guild.id), {})
+
+    # เลือกช่องทางการส่งข้อความ
+    channel = discord.utils.get(member.guild.text_channels, name="goodbye")  # หรือใส่ ID แทน
+    if not channel:
+        return
+
+    # รับค่าข้อความออกจากเซิร์ฟเวอร์และแทนที่ {user} ด้วยชื่อผู้ใช้
+    text = data.get("goodbye_message", "ขอโทษที่คุณต้องจากไป {user}").replace("{user}", member.mention)
+
+    # สร้าง embed สำหรับข้อความการออกจากเซิร์ฟเวอร์
+    embed = discord.Embed(
+        title=data.get("goodbye_title", "👋 ลาก่อน..."),
+        description=text,
+        color=discord.Color.red()
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+
+    # เช็คว่ามี URL รูปภาพหรือไม่
+    if data.get("goodbye_image_url"):
+        embed.set_image(url=data["goodbye_image_url"])
+
+    # เพิ่มเวลาใน footer
+    thailand_tz = pytz.timezone('Asia/Bangkok')
+    current_time = datetime.now(thailand_tz).strftime('%Y-%m-%d %H:%M:%S')
+
+    embed.set_footer(text=f"เหลือสมาชิก {member.guild.member_count} คนในเซิร์ฟเวอร์ 😢 | เวลา: {current_time}")
+
+    # ส่ง Embed ไปยังช่องที่ตั้งค่าไว้
+    await channel.send(embed=embed)
+
+
+
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -706,51 +805,6 @@ async def embedout(interaction: discord.Interaction):
 
 
 
-
-@bot.event
-async def on_member_remove(member):
-    # ตรวจสอบการตั้งค่าข้อความออกจากเซิร์ฟเวอร์
-    config = load_config()
-    data = config.get(str(member.guild.id), {})
-
-    # เลือกช่องทางการส่งข้อความ
-    channel = discord.utils.get(member.guild.text_channels, name="goodbye")  # หรือใส่ ID แทน
-    if not channel:
-        return
-
-    # รับค่าข้อความออกจากเซิร์ฟเวอร์และแทนที่ {user} ด้วยชื่อผู้ใช้
-    text = data.get("goodbye_message", "ขอโทษที่คุณต้องจากไป {user}").replace("{user}", member.mention)
-
-    # สร้าง embed สำหรับข้อความการออกจากเซิร์ฟเวอร์
-    embed = discord.Embed(
-        title=data.get("goodbye_title", "👋 ลาก่อน..."),
-        description=text,
-        color=discord.Color.red()
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-
-    # เช็คว่ามี URL รูปภาพหรือไม่
-    if data.get("goodbye_image_url"):
-        embed.set_image(url=data["goodbye_image_url"])
-
-    # เพิ่มเวลาใน footer
-    thailand_tz = pytz.timezone('Asia/Bangkok')
-    current_time = datetime.now(thailand_tz).strftime('%Y-%m-%d %H:%M:%S')
-
-    embed.set_footer(text=f"เหลือสมาชิก {member.guild.member_count} คนในเซิร์ฟเวอร์ 😢 | เวลา: {current_time}")
-
-    # ส่ง Embed ไปยังช่องที่ตั้งค่าไว้
-    await channel.send(embed=embed)
-
-
-
-
-
-
-from discord.ui import Button, View
-
-
-
 @bot.tree.command(name="upload_image", description="Upload an image to the server")
 async def upload_image(interaction: discord.Interaction):
     # สร้างปุ่มให้ผู้ใช้กดเพื่อเลือกไฟล์
@@ -909,56 +963,6 @@ async def createrole(interaction: discord.Interaction, channel: discord.TextChan
     await interaction.response.send_message(f"✅ สร้างข้อความ Role Reaction ในห้อง {channel.mention} แล้ว!", ephemeral=True)
 
 
-# Event: เมื่อมีคนกด Reaction
-@bot.event
-async def on_raw_reaction_add(payload):
-    if payload.guild_id is None:
-        return  # ข้ามข้อความใน DM
-
-    config = load_config()
-    guild_id = str(payload.guild_id)
-
-    if guild_id not in config:
-        return
-
-    emoji = str(payload.emoji)
-    if emoji not in config[guild_id]:
-        return
-
-    role_id = config[guild_id][emoji]["role_id"]
-    guild = bot.get_guild(payload.guild_id)
-    role = guild.get_role(role_id)
-    member = guild.get_member(payload.user_id)
-
-    if role and member:
-        await member.add_roles(role)
-        print(f"✅ Added {role.name} to {member.name}")
-
-
-# Event: เมื่อมีคนลบ Reaction
-@bot.event
-async def on_raw_reaction_remove(payload):
-    if payload.guild_id is None:
-        return  # ข้ามข้อความใน DM
-
-    config = load_config()
-    guild_id = str(payload.guild_id)
-
-    if guild_id not in config:
-        return
-
-    emoji = str(payload.emoji)
-    if emoji not in config[guild_id]:
-        return
-
-    role_id = config[guild_id][emoji]["role_id"]
-    guild = bot.get_guild(payload.guild_id)
-    role = guild.get_role(role_id)
-    member = guild.get_member(payload.user_id)
-
-    if role and member:
-        await member.remove_roles(role)
-        print(f"❌ Removed {role.name} from {member.name}")
 
 server_on()   
 
