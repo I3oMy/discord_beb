@@ -24,6 +24,26 @@ intents.members = True
 bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 
 
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        return {}
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        print("Error: JSON file is corrupted. Returning empty configuration.")
+        return {}
+    
+
+def save_config(config):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+    except IOError as e:
+        print(f"Error: Unable to save config. {e}")    
+
+
+
 menu_list = [
     "ข้าวกระเพรา",
     "ข้าวผัด",
@@ -320,18 +340,6 @@ class EmbedRank(commands.Cog):
         await interaction.response.send_message(f"✅ Embed ถูกส่งไปที่ {channel.mention} แล้ว!", ephemeral=True)
 
         bot.add_cog(EmbedRank(bot))
-
-
-
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        return {}
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_config(config):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4)
 
 
 
@@ -849,16 +857,24 @@ async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Ro
     config = load_config()
     guild_id = str(interaction.guild.id)
 
+    # ตรวจสอบว่ามีข้อมูลเซิร์ฟเวอร์นี้ใน JSON หรือยัง
     if guild_id not in config:
         config[guild_id] = {}
 
+    # ตรวจสอบว่ามี reaction_roles หรือยัง
+    if "reaction_roles" not in config[guild_id]:
+        config[guild_id]["reaction_roles"] = {}
+
     # บันทึกข้อมูล Role Reaction
-    config[guild_id][emoji] = {
+    config[guild_id]["reaction_roles"][emoji] = {
         "role_id": role.id,
         "description": description
     }
+
+    # บันทึกข้อมูลกลับไปในไฟล์ JSON
     save_config(config)
 
+    # ส่งข้อความยืนยัน
     await interaction.response.send_message(
         f"✅ ตั้งค่า Role Reaction: {emoji} -> {role.mention} สำเร็จ!",
         ephemeral=True
