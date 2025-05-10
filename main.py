@@ -290,46 +290,38 @@ class EmbedRole(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # สร้างคำสั่ง /embedrole
     @app_commands.command(name="embedrole", description="สร้าง Embed พร้อมปุ่มสำหรับรับ Role")
     @app_commands.describe(channel="เลือกห้องที่จะแสดง Embed")
     @app_commands.checks.has_permissions(administrator=True)
     async def embedrole(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        # สร้างข้อความ Embed
         embed = discord.Embed(
             title="รับ Role ด้วยปุ่ม!",
             description="กดปุ่มด้านล่างเพื่อตั้งค่าบทบาทของคุณ!",
             color=discord.Color.blurple()
         )
 
-        # สร้างปุ่มและ View
         class RoleButtonView(discord.ui.View):
             def __init__(self):
-                super().__init__(timeout=None)  # ปุ่มไม่มีวันหมดอายุ
+                super().__init__(timeout=None)
 
-                # ปุ่มที่ 1
-                self.add_item(discord.ui.Button(label="รับ Role 🔴", style=discord.ButtonStyle.danger, custom_id="role_red"))
-                # ปุ่มที่ 2
-                self.add_item(discord.ui.Button(label="รับ Role 🟢", style=discord.ButtonStyle.success, custom_id="role_green"))
+                self.add_item(discord.ui.Button(label="รับ Role 🔴", style=discord.ButtonStyle.danger, custom_id="embedrole_red"))
+                self.add_item(discord.ui.Button(label="รับ Role 🟢", style=discord.ButtonStyle.success, custom_id="embedrole_green"))
 
-            # Event เมื่อปุ่มถูกกด
             async def interaction_check(self, button_interaction: discord.Interaction) -> bool:
                 role_mapping = {
-                    "role_red": 123456789012345678,   # แทน Role ID สำหรับปุ่ม 🔴
-                    "role_green": 123456789012345679  # แทน Role ID สำหรับปุ่ม 🟢
+                    "embedrole_red": 123456789012345678,
+                    "embedrole_green": 123456789012345679
                 }
                 role_id = role_mapping.get(button_interaction.data["custom_id"])
                 if not role_id:
                     await button_interaction.response.send_message("❌ ไม่สามารถดำเนินการได้", ephemeral=True)
                     return False
 
-                # ดึง Role จาก Guild
                 role = button_interaction.guild.get_role(role_id)
                 if not role:
                     await button_interaction.response.send_message("❌ ไม่พบ Role นี้ในเซิร์ฟเวอร์", ephemeral=True)
                     return False
 
-                # เพิ่มหรือลบ Role
                 member = button_interaction.user
                 if role in member.roles:
                     await member.remove_roles(role)
@@ -339,7 +331,6 @@ class EmbedRole(commands.Cog):
                     await button_interaction.response.send_message(f"✅ รับ Role `{role.name}` แล้ว", ephemeral=True)
                 return True
 
-        # ส่ง Embed พร้อม View ไปยังห้องเป้าหมาย
         await channel.send(embed=embed, view=RoleButtonView())
         await interaction.response.send_message(f"✅ Embed ถูกส่งไปที่ {channel.mention} แล้ว!", ephemeral=True)
 
@@ -916,24 +907,24 @@ async def admincommand(interaction: Interaction):
     description="คำอธิบาย (ข้อความอธิบายบทบาท)"
 )
 async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
-    
-    
+    # โหลดการตั้งค่า
     config = load_config()
     guild_id = str(interaction.guild.id)
 
+    # ดึงข้อมูลของเซิร์ฟเวอร์ (ถ้าไม่มี ให้สร้างใหม่)
     data = config.get(guild_id, {})
-    if guild_id not in config:
-        config[guild_id] = {}
-
-    # บันทึกข้อมูล Role Reaction
-    config[guild_id][emoji] = {
+    
+    # บันทึกข้อมูลของ Role Reaction
+    data[emoji] = {
         "role_id": role.id,
         "description": description
     }
     
+    # อัปเดตข้อมูลกลับไปใน config
     config[guild_id] = data
     save_config(config)
 
+    # ส่งข้อความยืนยัน
     await interaction.response.send_message(
         f"✅ ตั้งค่า Role Reaction: {emoji} -> {role.mention} สำเร็จ!",
         ephemeral=True
