@@ -583,44 +583,48 @@ async def namecommand(interaction: discord.Interaction, ชื่อ: str):
     image_url="ลิงก์รูปหรือ GIF (หากต้องการเปลี่ยนรูป)"
 )
 async def setwelcome(interaction: discord.Interaction, channel: discord.TextChannel = None, message: str = None, image_url: str = None):
-    
-
-    config = load_config()
-    data = config.get(str(interaction.guild.id), {})
-
-    # ตรวจสอบว่ามีการตั้งค่าช่องไว้หรือไม่
-    if "channel_id" not in data:
-        # ถ้ายังไม่ตั้งค่าช่อง ให้บังคับเลือกช่องในครั้งแรก
-        if not channel:
-            await interaction.response.send_message("กรุณาตั้งค่าช่องต้อนรับก่อน ด้วยคำสั่ง `/setwelcome` ครั้งแรก", ephemeral=True)
+    try:
+        # โหลดการตั้งค่า
+        config = load_config()
+        if config is None:
+            await interaction.response.send_message("เกิดข้อผิดพลาดในการโหลดการตั้งค่า", ephemeral=True)
             return
-        data["channel_id"] = channel.id  # ถ้าไม่มีการตั้งค่าช่อง ให้ตั้งค่าใหม่
 
-    # ถ้าผู้ใช้ต้องการเปลี่ยนห้อง, อัปเดต channel_id
-    if channel:
-        data["channel_id"] = channel.id  # เปลี่ยนห้องที่ตั้งค่า
+        guild_id = str(interaction.guild.id)
+        data = config.get(guild_id, {})
 
-    # อัพเดตแค่ข้อความต้อนรับ หรือรูปภาพ ถ้าได้รับ
-    if message:
-        data["message"] = message  # อัปเดตข้อความต้อนรับ
-    if image_url:
-        data["image_url"] = image_url  # อัปเดตรูปภาพ
+        # ตรวจสอบว่ามีการตั้งค่าช่องไว้หรือไม่
+        if "channel_id" not in data:
+            if not channel:
+                await interaction.response.send_message("กรุณาตั้งค่าช่องต้อนรับก่อน ด้วยคำสั่ง `/setwelcome` ครั้งแรก", ephemeral=True)
+                return
+            data["channel_id"] = channel.id
 
-    data["enabled"] = True  # เปิดใช้งานระบบต้อนรับ
+        # อัปเดตห้องข้อความต้อนรับ
+        if channel:
+            data["channel_id"] = channel.id
+        if message:
+            data["message"] = message
+        if image_url:
+            data["image_url"] = image_url
 
-    config[str(interaction.guild.id)] = data
-    save_config(config)
+        data["enabled"] = True
+        config[guild_id] = data
+        save_config(config)
 
-    # แจ้งผลการตั้งค่า
-    channel = interaction.guild.get_channel(data["channel_id"])  # ดึงช่องที่ตั้งค่าไว้
-    if message and image_url and channel:
-        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่และรูปภาพใหม่.", ephemeral=True)
-    elif message and channel:
-        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่.", ephemeral=True)
-    elif image_url and channel:
-        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมรูปภาพใหม่.", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention}.", ephemeral=True)
+        # แจ้งผลการตั้งค่า
+        channel = interaction.guild.get_channel(data["channel_id"])  # ดึงช่องที่ตั้งค่าไว้
+        if message and image_url and channel:
+            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่และรูปภาพใหม่.", ephemeral=True)
+        elif message and channel:
+            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมข้อความใหม่.", ephemeral=True)
+        elif image_url and channel:
+            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention} พร้อมรูปภาพใหม่.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"✅ ตั้งค่าต้อนรับเสร็จแล้ว จะส่งที่ {channel.mention}.", ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"เกิดข้อผิดพลาด: {str(e)}", ephemeral=True) 
 
 
 
@@ -912,9 +916,12 @@ async def admincommand(interaction: Interaction):
     description="คำอธิบาย (ข้อความอธิบายบทบาท)"
 )
 async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
+    
+    
     config = load_config()
     guild_id = str(interaction.guild.id)
 
+    data = config.get(guild_id, {})
     if guild_id not in config:
         config[guild_id] = {}
 
@@ -923,6 +930,8 @@ async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Ro
         "role_id": role.id,
         "description": description
     }
+    
+    config[guild_id] = data
     save_config(config)
 
     await interaction.response.send_message(
