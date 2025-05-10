@@ -11,6 +11,8 @@ from discord.ext import commands
 from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
+from discord.app_commands import CommandInvokeError
+from discord.ext.commands import has_any_role
 
 
 
@@ -282,15 +284,15 @@ class GoodbyeModal(discord.ui.Modal):
         )
 
 
-class EmbedRank(commands.Cog):
+class EmbedRole(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # สร้างคำสั่ง /embedrank
-    @app_commands.command(name="embedrank", description="สร้าง Embed พร้อมปุ่มสำหรับรับ Role")
+    # สร้างคำสั่ง /embedrole
+    @app_commands.command(name="embedrole", description="สร้าง Embed พร้อมปุ่มสำหรับรับ Role")
     @app_commands.describe(channel="เลือกห้องที่จะแสดง Embed")
     @app_commands.checks.has_permissions(administrator=True)
-    async def embedrank(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    async def embedrole(self, interaction: discord.Interaction, channel: discord.TextChannel):
         # สร้างข้อความ Embed
         embed = discord.Embed(
             title="รับ Role ด้วยปุ่ม!",
@@ -339,20 +341,17 @@ class EmbedRank(commands.Cog):
         await channel.send(embed=embed, view=RoleButtonView())
         await interaction.response.send_message(f"✅ Embed ถูกส่งไปที่ {channel.mention} แล้ว!", ephemeral=True)
 
-        bot.add_cog(EmbedRank(bot))
-
-
-
-
 
 
 @bot.event
 async def on_ready():
-    print("Bot is ready!")
-    # ซิงค์คำสั่งให้กับเซิร์ฟเวอร์ทั้งหมด
-    for guild in bot.guilds:    
-        await bot.tree.sync(guild=guild)
-    print(f"✅ Synced commands to all servers.")
+    print(f"Logged in as {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands to Discord!")
+        await bot.add_cog(EmbedRole(bot))  # ใช้ await ที่นี่
+    except Exception as e:
+        print(f"Error syncing commands: {e}")
 
 
 @bot.event
@@ -532,26 +531,32 @@ async def setwelcome(interaction: discord.Interaction, channel: discord.TextChan
 @has_any_role_name(["คนดูแล", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
 @app_commands.describe(user="ผู้ใช้ตัวอย่าง (ใส่ชื่อหรือ mention)")
 async def previewwelcome(interaction: discord.Interaction, user: discord.User = None):
+    # ตรวจสอบว่า Interaction ถูกตอบกลับไปแล้วหรือยัง
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
+    else:
+        # แจ้งเตือนว่ามีการตอบกลับไปแล้ว
+        print("Interaction นี้ถูกตอบกลับไปแล้ว")
+        return
+
     if not user:
         user = interaction.user
 
+    # โหลดและตรวจสอบ config
     config = load_config()
     data = config.get(str(interaction.guild.id))
     if not data or not data.get("enabled", True):
-        await interaction.response.send_message("❌ ระบบต้อนรับไม่ได้เปิดใช้งาน", ephemeral=True)
+        await interaction.followup.send("❌ ระบบต้อนรับไม่ได้เปิดใช้งาน", ephemeral=True)
         return
 
+    # ตรวจสอบช่อง (channel)
     channel = interaction.guild.get_channel(data["channel_id"])
     if not channel:
-        await interaction.response.send_message("❌ ไม่พบช่องที่ตั้งค่าไว้", ephemeral=True)
+        await interaction.followup.send("❌ ไม่พบช่องที่ตั้งค่าไว้", ephemeral=True)
         return
-
-    # แจ้งการดำเนินการ
-    await interaction.response.defer(ephemeral=True)  # ให้ตอบกลับได้ทันที
 
     # เตรียมข้อความและ embed
     text = data["message"].replace("{user}", user.mention)
-
     title = f"{data.get('title', '🎉 ยินดีต้อนรับ!')}".replace("{user}", user.mention)
 
     embed = discord.Embed(
@@ -564,13 +569,12 @@ async def previewwelcome(interaction: discord.Interaction, user: discord.User = 
     if data.get("image_url"):
         embed.set_image(url=data["image_url"])
 
-    # ใช้ pytz เพื่อแปลงเวลาเป็นเวลาไทย
+    # ใช้ pytz เพื่อแสดงเวลาไทย
     thailand_tz = pytz.timezone('Asia/Bangkok')
-    current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')  # แสดงเวลาในรูปแบบของไทย
-
+    current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')
     embed.set_footer(text=f"ตอนนี้เรามี {interaction.guild.member_count} คนในเซิร์ฟเวอร์ 💬 | เวลา: {current_time}")
 
-    # ส่งข้อความข้างนอก embed ด้วย content
+    # ส่งข้อความต้อนรับ
     await interaction.followup.send(
         content=f"🎉 ยินดีต้อนรับ {user.mention}!",
         embed=embed,
@@ -857,24 +861,16 @@ async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Ro
     config = load_config()
     guild_id = str(interaction.guild.id)
 
-    # ตรวจสอบว่ามีข้อมูลเซิร์ฟเวอร์นี้ใน JSON หรือยัง
     if guild_id not in config:
         config[guild_id] = {}
 
-    # ตรวจสอบว่ามี reaction_roles หรือยัง
-    if "reaction_roles" not in config[guild_id]:
-        config[guild_id]["reaction_roles"] = {}
-
     # บันทึกข้อมูล Role Reaction
-    config[guild_id]["reaction_roles"][emoji] = {
+    config[guild_id][emoji] = {
         "role_id": role.id,
         "description": description
     }
-
-    # บันทึกข้อมูลกลับไปในไฟล์ JSON
     save_config(config)
 
-    # ส่งข้อความยืนยัน
     await interaction.response.send_message(
         f"✅ ตั้งค่า Role Reaction: {emoji} -> {role.mention} สำเร็จ!",
         ephemeral=True
@@ -965,5 +961,8 @@ async def on_raw_reaction_remove(payload):
         print(f"❌ Removed {role.name} from {member.name}")
 
 server_on()   
+
+async def setup_bot():
+    await bot.add_cog(EmbedRole(bot))
 
 bot.run(os.getenv('TOKEN'))
