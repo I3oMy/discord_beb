@@ -1,3 +1,4 @@
+
 import discord
 import json
 import os 
@@ -10,7 +11,7 @@ from discord.ext import commands
 from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
-from discord.app_commands import CheckFailure
+
 
 
 
@@ -20,7 +21,7 @@ CONFIG_FILE = "config.json"
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 
 
 menu_list = [
@@ -260,6 +261,64 @@ class GoodbyeModal(discord.ui.Modal):
         )
 
 
+class EmbedRank(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    # สร้างคำสั่ง /embedrank
+    @app_commands.command(name="embedrank", description="สร้าง Embed พร้อมปุ่มสำหรับรับ Role")
+    @app_commands.describe(channel="เลือกห้องที่จะแสดง Embed")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def embedrank(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        # สร้างข้อความ Embed
+        embed = discord.Embed(
+            title="รับ Role ด้วยปุ่ม!",
+            description="กดปุ่มด้านล่างเพื่อตั้งค่าบทบาทของคุณ!",
+            color=discord.Color.blurple()
+        )
+
+        # สร้างปุ่มและ View
+        class RoleButtonView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=None)  # ปุ่มไม่มีวันหมดอายุ
+
+                # ปุ่มที่ 1
+                self.add_item(discord.ui.Button(label="รับ Role 🔴", style=discord.ButtonStyle.danger, custom_id="role_red"))
+                # ปุ่มที่ 2
+                self.add_item(discord.ui.Button(label="รับ Role 🟢", style=discord.ButtonStyle.success, custom_id="role_green"))
+
+            # Event เมื่อปุ่มถูกกด
+            async def interaction_check(self, button_interaction: discord.Interaction) -> bool:
+                role_mapping = {
+                    "role_red": 123456789012345678,   # แทน Role ID สำหรับปุ่ม 🔴
+                    "role_green": 123456789012345679  # แทน Role ID สำหรับปุ่ม 🟢
+                }
+                role_id = role_mapping.get(button_interaction.data["custom_id"])
+                if not role_id:
+                    await button_interaction.response.send_message("❌ ไม่สามารถดำเนินการได้", ephemeral=True)
+                    return False
+
+                # ดึง Role จาก Guild
+                role = button_interaction.guild.get_role(role_id)
+                if not role:
+                    await button_interaction.response.send_message("❌ ไม่พบ Role นี้ในเซิร์ฟเวอร์", ephemeral=True)
+                    return False
+
+                # เพิ่มหรือลบ Role
+                member = button_interaction.user
+                if role in member.roles:
+                    await member.remove_roles(role)
+                    await button_interaction.response.send_message(f"❌ เอา Role `{role.name}` ออกแล้ว", ephemeral=True)
+                else:
+                    await member.add_roles(role)
+                    await button_interaction.response.send_message(f"✅ รับ Role `{role.name}` แล้ว", ephemeral=True)
+                return True
+
+        # ส่ง Embed พร้อม View ไปยังห้องเป้าหมาย
+        await channel.send(embed=embed, view=RoleButtonView())
+        await interaction.response.send_message(f"✅ Embed ถูกส่งไปที่ {channel.mention} แล้ว!", ephemeral=True)
+
+        bot.add_cog(EmbedRank(bot))
 
 
 
@@ -273,8 +332,6 @@ def save_config(config):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4)
 
-bot = commands.Bot(command_prefix='!', intents=discord.Intents.all())
-
 
 
 
@@ -285,7 +342,7 @@ async def on_ready():
     print("Bot is ready!")
     # ซิงค์คำสั่งให้กับเซิร์ฟเวอร์ทั้งหมด
     for guild in bot.guilds:
-        await bot.tree.sync(guild=guild)
+        await bot.tree.sync()
     print(f"✅ Synced commands to all servers.")
 
 
@@ -779,6 +836,117 @@ async def admincommand(interaction: Interaction):
         return
     await interaction.response.send_message("คำสั่งนี้สามารถใช้งานได้")
 
+
+@bot.tree.command(name="setrole", description="ตั้งค่าระบบ Role Reaction")
+@app_commands.describe(
+    emoji="อิโมจิที่ต้องการ",
+    role="Role ที่ต้องการให้สมาชิกได้รับ",
+    description="คำอธิบาย (ข้อความอธิบายบทบาท)"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
+    config = load_config()
+    guild_id = str(interaction.guild.id)
+
+    if guild_id not in config:
+        config[guild_id] = {}
+
+    # บันทึกข้อมูล Role Reaction
+    config[guild_id][emoji] = {
+        "role_id": role.id,
+        "description": description
+    }
+    save_config(config)
+
+    await interaction.response.send_message(
+        f"✅ ตั้งค่า Role Reaction: {emoji} -> {role.mention} สำเร็จ!",
+        ephemeral=True
+    )
+
+
+# คำสั่ง Slash Command สำหรับสร้างข้อความ Role Reaction
+@bot.tree.command(name="createrole", description="สร้างข้อความ Role Reaction")
+@app_commands.describe(channel="ห้องที่ต้องการส่งข้อความ Role Reaction")
+@app_commands.checks.has_permissions(administrator=True)
+async def createrole(interaction: discord.Interaction, channel: discord.TextChannel):
+    config = load_config()
+    guild_id = str(interaction.guild.id)
+
+    if guild_id not in config or not config[guild_id]:
+        await interaction.response.send_message("❌ ยังไม่มีการตั้งค่า Role Reaction สำหรับเซิร์ฟเวอร์นี้", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="📜 Role Reaction",
+        description="กดอิโมจิเพื่อรับยศตามที่คุณต้องการ!",
+        color=discord.Color.blurple()
+    )
+
+    # สร้างข้อความ Embed พร้อม Reaction
+    for emoji, data in config[guild_id].items():
+        role = interaction.guild.get_role(data["role_id"])
+        if role:
+            embed.add_field(name=f"{emoji} {role.name}", value=data["description"], inline=False)
+
+    message = await channel.send(embed=embed)
+
+    # เพิ่ม Reaction ตามที่ตั้งค่าไว้
+    for emoji in config[guild_id]:
+        await message.add_reaction(emoji)
+
+    await interaction.response.send_message(f"✅ สร้างข้อความ Role Reaction ในห้อง {channel.mention} แล้ว!", ephemeral=True)
+
+
+# Event: เมื่อมีคนกด Reaction
+@bot.event
+async def on_raw_reaction_add(payload):
+    if payload.guild_id is None:
+        return  # ข้ามข้อความใน DM
+
+    config = load_config()
+    guild_id = str(payload.guild_id)
+
+    if guild_id not in config:
+        return
+
+    emoji = str(payload.emoji)
+    if emoji not in config[guild_id]:
+        return
+
+    role_id = config[guild_id][emoji]["role_id"]
+    guild = bot.get_guild(payload.guild_id)
+    role = guild.get_role(role_id)
+    member = guild.get_member(payload.user_id)
+
+    if role and member:
+        await member.add_roles(role)
+        print(f"✅ Added {role.name} to {member.name}")
+
+
+# Event: เมื่อมีคนลบ Reaction
+@bot.event
+async def on_raw_reaction_remove(payload):
+    if payload.guild_id is None:
+        return  # ข้ามข้อความใน DM
+
+    config = load_config()
+    guild_id = str(payload.guild_id)
+
+    if guild_id not in config:
+        return
+
+    emoji = str(payload.emoji)
+    if emoji not in config[guild_id]:
+        return
+
+    role_id = config[guild_id][emoji]["role_id"]
+    guild = bot.get_guild(payload.guild_id)
+    role = guild.get_role(role_id)
+    member = guild.get_member(payload.user_id)
+
+    if role and member:
+        await member.remove_roles(role)
+        print(f"❌ Removed {role.name} from {member.name}")
 
 server_on()   
 
