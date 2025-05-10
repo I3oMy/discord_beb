@@ -78,6 +78,7 @@ async def handle_check_failure(interaction: discord.Interaction, error):
 
 
 
+# ตรวจสอบบทบาท
 def has_any_role_name(role_names: list[str]):
     role_names_lower = [name.lower() for name in role_names]
     
@@ -839,18 +840,11 @@ async def admincommand(interaction: Interaction):
 
 @bot.tree.command(name="setrole", description="ตั้งค่าระบบ Role Reaction")
 @has_any_role_name(["คนดูแล", "Moderator", "Admin"])
-@app_commands.checks.has_permissions(administrator=True)
 @app_commands.describe(
     emoji="อิโมจิที่ต้องการ",
     role="Role ที่ต้องการให้สมาชิกได้รับ",
     description="คำอธิบาย (ข้อความอธิบายบทบาท)"
 )
-async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
-    # โค้ดของคำสั่ง
-    emoji="อิโมจิที่ต้องการ",
-    role="Role ที่ต้องการให้สมาชิกได้รับ",
-    description="คำอธิบาย (ข้อความอธิบายบทบาท)"
-
 async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
     config = load_config()
     guild_id = str(interaction.guild.id)
@@ -870,11 +864,10 @@ async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Ro
         ephemeral=True
     )
 
-
-# คำสั่ง Slash Command สำหรับสร้างข้อความ Role Reaction
+# คำสั่งสร้างข้อความ Role Reaction
 @bot.tree.command(name="createrole", description="สร้างข้อความ Role Reaction")
 @app_commands.describe(channel="ห้องที่ต้องการส่งข้อความ Role Reaction")
-@app_commands.checks.has_permissions(administrator=True)
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])
 async def createrole(interaction: discord.Interaction, channel: discord.TextChannel):
     config = load_config()
     guild_id = str(interaction.guild.id)
