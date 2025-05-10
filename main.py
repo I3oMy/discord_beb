@@ -14,6 +14,7 @@ from datetime import datetime
 from discord.app_commands import CommandInvokeError
 from discord.ext.commands import has_any_role
 from discord.ui import Button, View
+from discord import app_commands, Interaction
 
 
 
@@ -123,6 +124,16 @@ async def check_admin_permission(interaction):
     return interaction.user.guild_permissions.administrator
 
 
+class EmbedRole(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="hello")
+    async def hello(self, ctx):
+        await ctx.send("Hello from EmbedRole!")
+
+async def setup(bot):
+    await bot.add_cog(EmbedRole(bot))
 
 
 class WelcomeModal(discord.ui.Modal):
@@ -286,53 +297,93 @@ class GoodbyeModal(discord.ui.Modal):
         )
 
 
-class EmbedRole(commands.Cog):
+class RoleReactionView(discord.ui.View):
+    def __init__(self, role_mapping: dict, timeout: int = 300):
+        super().__init__(timeout=timeout)
+        self.role_mapping = role_mapping
+
+        # สร้างปุ่มสำหรับแต่ละ Role
+        for custom_id, role in role_mapping.items():
+            self.add_item(
+                discord.ui.Button(label=f"รับ Role {role.name}", style=discord.ButtonStyle.primary, custom_id=custom_id)
+            )
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        # ตรวจสอบ Role ที่เกี่ยวข้องกับ Custom ID ของปุ่ม
+        role = self.role_mapping.get(interaction.data["custom_id"])
+        if not role:
+            await interaction.response.send_message("❌ ไม่พบ Role ที่เกี่ยวข้อง", ephemeral=True)
+            return False
+
+        # เพิ่มหรือลบ Role ให้กับผู้ใช้
+        member = interaction.user
+        if role in member.roles:
+            await member.remove_roles(role)
+            await interaction.response.send_message(f"❌ เอา Role `{role.name}` ออกแล้ว", ephemeral=True)
+        else:
+            await member.add_roles(role)
+            await interaction.response.send_message(f"✅ รับ Role `{role.name}` แล้ว", ephemeral=True)
+        return True
+
+class RoleReaction(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @app_commands.command(name="embedrole", description="สร้าง Embed พร้อมปุ่มสำหรับรับ Role")
-    @app_commands.describe(channel="เลือกห้องที่จะแสดง Embed")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def embedrole(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    @app_commands.describe(
+        channel="เลือกห้องที่จะแสดง Embed",
+        red_role="Role สำหรับปุ่มสีแดง",
+        green_role="Role สำหรับปุ่มสีเขียว"
+    )
+    async def embedrole(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel,
+        red_role: discord.Role,
+        green_role: discord.Role
+    ):
+        # สร้าง Embed
         embed = discord.Embed(
             title="รับ Role ด้วยปุ่ม!",
             description="กดปุ่มด้านล่างเพื่อตั้งค่าบทบาทของคุณ!",
             color=discord.Color.blurple()
         )
 
-        class RoleButtonView(discord.ui.View):
-            def __init__(self):
-                super().__init__(timeout=None)
+        # สร้าง Role Mapping
+        role_mapping = {
+            "embedrole_red": red_role,
+            "embedrole_green": green_role,
+        }
 
-                self.add_item(discord.ui.Button(label="รับ Role 🔴", style=discord.ButtonStyle.danger, custom_id="embedrole_red"))
-                self.add_item(discord.ui.Button(label="รับ Role 🟢", style=discord.ButtonStyle.success, custom_id="embedrole_green"))
-
-            async def interaction_check(self, button_interaction: discord.Interaction) -> bool:
-                role_mapping = {
-                    "embedrole_red": 123456789012345678,
-                    "embedrole_green": 123456789012345679
-                }
-                role_id = role_mapping.get(button_interaction.data["custom_id"])
-                if not role_id:
-                    await button_interaction.response.send_message("❌ ไม่สามารถดำเนินการได้", ephemeral=True)
-                    return False
-
-                role = button_interaction.guild.get_role(role_id)
-                if not role:
-                    await button_interaction.response.send_message("❌ ไม่พบ Role นี้ในเซิร์ฟเวอร์", ephemeral=True)
-                    return False
-
-                member = button_interaction.user
-                if role in member.roles:
-                    await member.remove_roles(role)
-                    await button_interaction.response.send_message(f"❌ เอา Role `{role.name}` ออกแล้ว", ephemeral=True)
-                else:
-                    await member.add_roles(role)
-                    await button_interaction.response.send_message(f"✅ รับ Role `{role.name}` แล้ว", ephemeral=True)
-                return True
-
-        await channel.send(embed=embed, view=RoleButtonView())
+        # ส่ง Embed และ View ไปยังห้องที่กำหนด
+        await channel.send(embed=embed, view=RoleReactionView(role_mapping))
         await interaction.response.send_message(f"✅ Embed ถูกส่งไปที่ {channel.mention} แล้ว!", ephemeral=True)
+
+    @app_commands.command(name="setrole", description="ตั้งค่าระบบ Role Reaction")
+    @app_commands.describe(
+        emoji="อิโมจิที่ต้องการ",
+        role="Role ที่ต้องการให้สมาชิกได้รับ",
+        description="คำอธิบาย (ข้อความอธิบายบทบาท)"
+    )
+    async def setrole(self, interaction: Interaction, emoji: str, role: discord.Role, description: str):
+        # สร้าง Embed
+        embed = discord.Embed(
+            title="Role Reaction",
+            description=f"{emoji} - {role.mention}\n{description}",
+            color=discord.Color.blue()
+        )
+
+        # สร้าง Role Mapping สำหรับปุ่มเดียว
+        role_mapping = {
+            "setrole_button": role,
+        }
+
+        # ส่ง Embed และ View ไปยังแชท
+        await interaction.response.send_message(embed=embed, view=RoleReactionView(role_mapping))
+
+# ฟังก์ชันสำหรับเพิ่ม Cog
+async def setup(bot):
+    await bot.add_cog(RoleReaction(bot))
 
 
 
@@ -342,7 +393,8 @@ async def on_ready():
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} commands to Discord!")
-        await bot.add_cog(EmbedRole(bot))  # ใช้ await ที่นี่
+        await bot.add_cog(EmbedRole(bot))
+        print("✅ EmbedRole cog added successfully!")
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
@@ -555,15 +607,6 @@ async def send_image(ctx):
                 embed.set_image(url=attachment.url)
                 await ctx.send(embed=embed)    
 
-@bot.tree.command(name="hi", description="Replies with hello")
-async def hello(interaction: discord.Interaction):
-    await interaction.response.send_message("hello it's me bot discord")
-
-
-
-@bot.tree.command(name="ชื่อ", description="ตอบกลับด้วยชื่อ")
-async def namecommand(interaction: discord.Interaction, ชื่อ: str):
-    await interaction.response.send_message(f"hello {ชื่อ}")
 
 
 @bot.tree.command(name="setwelcome", description="ตั้งค่าระบบต้อนรับ")
@@ -899,36 +942,6 @@ async def admincommand(interaction: Interaction):
     await interaction.response.send_message("คำสั่งนี้สามารถใช้งานได้")
 
 
-@bot.tree.command(name="setrole", description="ตั้งค่าระบบ Role Reaction")
-@has_any_role_name(["คนดูแล", "Moderator", "Admin"])
-@app_commands.describe(
-    emoji="อิโมจิที่ต้องการ",
-    role="Role ที่ต้องการให้สมาชิกได้รับ",
-    description="คำอธิบาย (ข้อความอธิบายบทบาท)"
-)
-async def setrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str):
-    # โหลดการตั้งค่า
-    config = load_config()
-    guild_id = str(interaction.guild.id)
-
-    # ดึงข้อมูลของเซิร์ฟเวอร์ (ถ้าไม่มี ให้สร้างใหม่)
-    data = config.get(guild_id, {})
-    
-    # บันทึกข้อมูลของ Role Reaction
-    data[emoji] = {
-        "role_id": role.id,
-        "description": description
-    }
-    
-    # อัปเดตข้อมูลกลับไปใน config
-    config[guild_id] = data
-    save_config(config)
-
-    # ส่งข้อความยืนยัน
-    await interaction.response.send_message(
-        f"✅ ตั้งค่า Role Reaction: {emoji} -> {role.mention} สำเร็จ!",
-        ephemeral=True
-    )
 
 # คำสั่งสร้างข้อความ Role Reaction
 @bot.tree.command(name="createrole", description="สร้างข้อความ Role Reaction")
@@ -964,9 +977,7 @@ async def createrole(interaction: discord.Interaction, channel: discord.TextChan
 
 
 
-server_on()   
+server_on()
 
-async def setup_bot():
-    await bot.add_cog(EmbedRole(bot))
 
 bot.run(os.getenv('TOKEN'))
