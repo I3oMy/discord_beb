@@ -390,27 +390,12 @@ async def setup(bot):
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user}")
-
-    # ล้างคำสั่ง Global Commands
     try:
-        bot.tree.clear_commands(guild=None)  # Clear Global Commands
-        await bot.tree.sync()  # Sync Global Commands
-        print("✅ ล้างคำสั่ง Global และซิงค์ใหม่สำเร็จ!")
+        # ซิงค์คำสั่งใหม่
+        await bot.tree.sync()
+        print("✅ ซิงค์คำสั่งสำเร็จ!")
     except Exception as e:
-        print(f"❌ เกิดข้อผิดพลาดในการล้างคำสั่ง Global: {e}")
-
-    # ล้างคำสั่งใน Guild-Specific Commands
-    guild_id = 974184248363859988  # ใส่ Guild ID ของเซิร์ฟเวอร์
-    guild = discord.Object(id=guild_id)
-    try:
-        bot.tree.clear_commands(guild=guild)  # Clear Guild-Specific Commands
-        await bot.tree.sync(guild=guild)  # Sync Guild-Specific Commands
-        print(f"✅ ล้างคำสั่งในเซิร์ฟเวอร์ {guild_id} และซิงค์ใหม่สำเร็จ!")
-    except discord.Forbidden:
-        print(f"❌ บอทไม่มีสิทธิ์ 'applications.commands' ในเซิร์ฟเวอร์ {guild_id}. โปรดตรวจสอบสิทธิ์ของบอท.")
-    except Exception as e:
-        print(f"❌ เกิดข้อผิดพลาดในการล้างคำสั่งในเซิร์ฟเวอร์ {guild_id}: {e}")
+        print(f"❌ เกิดข้อผิดพลาดในการซิงค์คำสั่ง: {e}")
 
 
 
@@ -989,7 +974,6 @@ async def createrole(interaction: discord.Interaction, channel: discord.TextChan
         await message.add_reaction(emoji)
 
     await interaction.response.send_message(f"✅ สร้างข้อความ Role Reaction ในห้อง {channel.mention} แล้ว!", ephemeral=True)
-
 
 server_on()
 
