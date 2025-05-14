@@ -525,33 +525,32 @@ async def embedrole(interaction: discord.Interaction):
 
 
 # คำสั่ง /editrole
-@bot.tree.command()
+@bot.tree.command(name="editrole", description="เพิ่มหรือแก้ไขบทบาทที่ใช้กับระบบกดรับยศ")
 @has_any_role_name(["Admin", "Moderator", "คนดูแล"])
 async def editrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str = "ไม่มีคำอธิบาย"):
     """
-    คำสั่งนี้จะให้ผู้ใช้กรอกอิโมจิ, เลือกบทบาท, และกรอกคำอธิบาย
-    :param emoji: อิโมจิที่ต้องการใช้งาน
-    :param role: บทบาทที่ผู้ใช้เลือก
-    :param description: คำอธิบายที่ผู้ใช้กรอก (ค่าเริ่มต้นคือ "ไม่มีคำอธิบาย")
+    เพิ่มหรืออัปเดตข้อมูล emoji + บทบาท สำหรับระบบกดรับยศ
     """
     config = load_config()
     guild_id = str(interaction.guild.id)
     guild_config = config.get(guild_id, {})
 
-    if str(role.id) not in guild_config:
-        guild_config[str(role.id)] = {}
+    # อัปเดตหรือสร้างข้อมูลใหม่โดยใช้ emoji เป็น key
+    guild_config[emoji] = {
+        "role_id": role.id,
+        "description": description
+    }
 
-    guild_config[str(role.id)]["emoji"] = emoji
-    guild_config[str(role.id)]["description"] = description
+    config[guild_id] = guild_config
     save_config(config)
 
-    await interaction.response.send_message(f"✅ ข้อมูลของบทบาท {role.name} ถูกอัปเดตสำเร็จ!\nEmoji: {emoji}\nคำอธิบาย: {description}")
-
-def load_config():
-    return {}  # จำลองให้เป็นไฟล์ config จริงๆ
-
-def save_config(config):
-    pass  # บันทึกข้อมูลลงในไฟล์   
+    await interaction.response.send_message(
+        f"✅ อัปเดตข้อมูลสำเร็จ!\n"
+        f"Emoji: {emoji}\n"
+        f"Role: {role.mention}\n"
+        f"คำอธิบาย: {description}",
+        ephemeral=True
+    )
 
 class EmbedRoleModal(Modal):
     def __init__(self):
