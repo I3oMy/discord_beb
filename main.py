@@ -7,7 +7,6 @@ import random
 import asyncio
 import sys
 import logging
-import emoji
 from discord.app_commands import CheckFailure
 from myserver import server_on
 from discord.ext import commands
