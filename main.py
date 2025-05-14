@@ -415,8 +415,8 @@ async def setrole(interaction: discord.Interaction, channel: discord.TextChannel
         await interaction.response.send_message("❌ ยังไม่มีข้อมูลบทบาทในเซิร์ฟเวอร์นี้", ephemeral=True)
         return
 
-    if not any(isinstance(v, dict) and "emoji" in v for v in guild_config.values()):
-        await interaction.response.send_message("❌ ยังไม่มีการเพิ่มบทบาทใดๆ ด้วย emoji", ephemeral=True)
+    if not any(isinstance(v, dict) and "role_id" in v for v in guild_config.values()):
+        await interaction.response.send_message("❌ ยังไม่มีการเพิ่มบทบาทใดๆ", ephemeral=True)
         return
 
     if "channel_id" not in guild_config and not channel:
@@ -428,50 +428,53 @@ async def setrole(interaction: discord.Interaction, channel: discord.TextChannel
         config[guild_id] = guild_config
         save_config(config)
 
-    # แสดงผลข้อมูลจาก guild_config
-    description_lines = ["°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･"]
-    for role_id, data in guild_config.items():
-        if isinstance(data, dict) and "emoji" in data:
-            emoji = data["emoji"]
+    title = guild_config.get("embedrole_title", "✦ select your role ✦")
+    color_hex = guild_config.get("embedrole_color", "#2ecc71")
+    try:
+        color = int(color_hex.replace("#", ""), 16)
+    except ValueError:
+        color = 0x2ecc71
+
+    description_lines = ["°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･"]
+    for emoji, data in guild_config.items():
+        if isinstance(data, dict) and "role_id" in data:
+            role_id = data["role_id"]
             description = data.get("description", "")
-            role = interaction.guild.get_role(int(role_id))
+            role = interaction.guild.get_role(role_id)
 
-            description_lines.append(f"{emoji} = {role.mention} {description} ୨୧ ≛")
+            if role:
+                description_lines.append(f"{emoji} = {role.mention} {description} ୨୧ ≛")
 
-    description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･")
+    description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･")
 
     embed = discord.Embed(
-        title=guild_config.get("title", "✦ select your role ✦"),
+        title=title,
         description="\n".join(description_lines),
-        color=discord.Color.purple()
+        color=color
     )
     embed.set_image(url=guild_config.get("image_url", "https://media.tenor.com/J_BBejDgP1kAAAAC/ai-eyes.gif"))
-    embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url)
+    embed.set_footer(text=f"สร้างโดย {interaction.user.display_name}", icon_url=interaction.user.avatar.url)
 
     target_channel_id = guild_config.get("channel_id")
     target_channel = interaction.guild.get_channel(target_channel_id)
 
     if target_channel:
         message = await target_channel.send(embed=embed)
-        # เพิ่ม emoji reactions
-        for emj, data in guild_config.items():
-            if isinstance(data, dict) and "emoji" in data:
+
+        for emoji, data in guild_config.items():
+            if isinstance(data, dict) and "role_id" in data:
                 try:
-                    await message.add_reaction(data["emoji"])
+                    await message.add_reaction(emoji)
                 except discord.HTTPException:
                     pass
 
-        # บันทึก message_id เพื่อใช้จับตอนกดอิโมจิ
         guild_config["message_id"] = message.id
         config[guild_id] = guild_config
         save_config(config)
 
-        # ส่งข้อความตอบกลับ
         await interaction.response.send_message(f"✅ ส่ง Embed ไปที่ {target_channel.mention} แล้ว", ephemeral=True)
     else:
         await interaction.response.send_message("❌ ไม่พบห้องที่ตั้งค่าไว้", ephemeral=True)
-
-
 
 
 @bot.tree.command(name="resetrole", description="รีเซ็ตบทบาทที่ตั้งไว้")
