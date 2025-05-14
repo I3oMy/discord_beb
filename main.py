@@ -313,47 +313,61 @@ async def on_raw_reaction_add(payload):
         return
 
     config = load_config()
-    guild_config = config.get(str(payload.guild_id))
+    guild_id = str(payload.guild_id)
+    guild_config = config.get(guild_id, {})
 
-    if not guild_config or payload.message_id != guild_config.get("message_id"):
+    if payload.message_id != guild_config.get("message_id"):
         return
 
-    for role_id, data in guild_config.items():
-        if isinstance(data, dict) and data.get("emoji") == str(payload.emoji):
-            guild = bot.get_guild(payload.guild_id)
-            member = guild.get_member(payload.user_id)
-            role = guild.get_role(int(role_id))
+    emoji = str(payload.emoji)
 
-            if role and member:
-                try:
-                    await member.add_roles(role)
-                    print(f"✅ Gave role {role.name} to {member.display_name}")
-                except discord.Forbidden:
-                    print(f"❌ Missing permission to add role {role.name} to {member.display_name}")
-                except Exception as e:
-                    print(f"❌ Error: {e}")
-            break
+    if emoji in guild_config:
+        role_id = guild_config[emoji].get("role_id")
+        if not role_id:
+            return
 
+        guild = bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
+        role = guild.get_role(role_id)
+
+        if role and member:
+            try:
+                await member.add_roles(role)
+                print(f"✅ Gave role {role.name} to {member.display_name}")
+            except discord.Forbidden:
+                print(f"❌ Missing permission to add role {role.name} to {member.display_name}")
+            except Exception as e:
+                print(f"❌ Error: {e}")
 
 @bot.event
 async def on_raw_reaction_remove(payload):
     if payload.guild_id is None:
-        return  # Ignore DMs
+        return
 
     config = load_config()
-    guild_config = config.get(str(payload.guild_id))
+    guild_id = str(payload.guild_id)
+    guild_config = config.get(guild_id, {})
 
-    if not guild_config or payload.message_id != guild_config.get("message_id"):
-        return  # Not the correct message
+    if payload.message_id != guild_config.get("message_id"):
+        return
 
-    for role_id, data in guild_config.items():
-        if isinstance(data, dict) and data.get("emoji") == str(payload.emoji):
-            guild = bot.get_guild(payload.guild_id)
-            member = guild.get_member(payload.user_id)
-            role = guild.get_role(int(role_id))
-            if role and member:
+    emoji = str(payload.emoji)
+
+    if emoji in guild_config:
+        role_id = guild_config[emoji].get("role_id")
+        if not role_id:
+            return
+
+        guild = bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
+        role = guild.get_role(role_id)
+
+        if role and member:
+            try:
                 await member.remove_roles(role)
-                break
+                print(f"🔁 Removed role {role.name} from {member.display_name}")
+            except Exception as e:
+                print(f"❌ Error removing role: {e}")
 
 
 @bot.event
