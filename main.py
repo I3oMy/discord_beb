@@ -4,57 +4,90 @@ import os
 import pytz  
 import re
 import random
+import asyncio
+import sys
+import logging
 from discord.app_commands import CheckFailure
 from myserver import server_on
 from discord.ext import commands
 from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
-from discord.app_commands import CheckFailure
+from discord import ButtonStyle
+from cogs.embed_command import EmbedCommand
+from cogs.role_reaction import RoleReactionHandler
+from discord.ui import Modal, TextInput, Button, View, Select
+from discord import TextStyle
 
 
 CONFIG_FILE = "config.json"
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 intents = discord.Intents.all()
 intents.guilds = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-menu_list = [
-    "ข้าวกระเพรา",
-    "ข้าวผัด",
-    "ข้าวมันไก่",
-    "ข้าวหมูแดง",
-    "ข้าวหมูกรอบ",
-    "ก๋วยเตี๋ยวเรือ",
-    "ก๋วยเตี๋ยวต้มยำ",
-    "เย็นตาโฟ",
-    "ราดหน้า",
-    "ผัดซีอิ๊ว",
-    "ผัดไทย",
-    "ข้าวไข่เจียว",
-    "ข้าวไข่ข้น",
-    "ข้าวหน้าหมูทอด",
-    "ข้าวหน้าเนื้อ",
-    "หมูกระทะ",
-    "ชาบู",
-    "ปิ้งย่างเกาหลี",
-    "พิซซ่า",
-    "เบอร์เกอร์",
-    "สปาเก็ตตี้",
-    "ข้าวซอย",
-    "แกงเขียวหวาน",
-    "แกงส้ม",
-    "ต้มยำกุ้ง",
-    "ต้มจืดเต้าหู้หมูสับ",
-    "ข้าวคลุกกะปิ",
-    "ส้มตำ",
-    "ไก่ทอด",
-    "ข้าวเหนียวหมูปิ้ง"
-]
+
+@bot.command()
+@commands.is_owner()
+async def restart(ctx):
+    await ctx.send("♻️ กำลังรีสตาร์ทบอท...")
+    try:
+        # ตรวจสอบว่ามี sys.executable และ sys.argv
+        if sys.executable and sys.argv:
+            os.execv(sys.executable, ['python'] + sys.argv)
+        else:
+            await ctx.send("❌ ไม่สามารถรีสตาร์ทได้: ขาด sys.executable หรือ sys.argv")
+    except Exception as e:
+        await ctx.send(f"❌ เกิดข้อผิดพลาดในการรีสตาร์ท: {e}")
+        print(f"Error during restart: {e}")
+
+@bot.command()
+@commands.is_owner()
+async def clearslash(ctx):
+    """
+    ลบ Global Slash Commands ทั้งหมด และ Sync ใหม่
+    """
+    try:
+        print("🔄 Attempting to clear global commands...")
+
+        # ดึงคำสั่ง Global ทั้งหมดจาก Discord
+        global_commands = await bot.tree.fetch_commands()
+        print(f"✅ Fetched {len(global_commands)} global commands.")
+
+        # ลบคำสั่ง Global ทีละคำสั่งผ่าน HTTP API
+        app_id = bot.user.id
+        for command in global_commands:
+            await bot.http.delete_global_command(app_id, command.id)
+            print(f"🗑️ Deleted global command: {command.name}")
+
+        # Sync ใหม่ (จะว่างเปล่าเพราะลบหมดแล้ว)
+        synced = await bot.tree.sync()
+        print(f"✅ Commands synced successfully. Synced {len(synced)} commands.")
+        await ctx.send("✅ ลบคำสั่ง Global ทั้งหมดและ Sync ใหม่แล้ว!")
+    except Exception as e:
+        error_message = f"❌ เกิดข้อผิดพลาดขณะลบคำสั่ง: {e}"
+        print(error_message)
+        await ctx.send(error_message)
 
 
+
+@bot.command()
+async def send_image(ctx):
+    # ถ้าผู้ใช้มีไฟล์แนบ
+    if ctx.message.attachments:
+        for attachment in ctx.message.attachments:
+            if attachment.filename.endswith(('png', 'jpg', 'jpeg', 'gif')):
+                # ส่งรูปภาพใน Embed
+                embed = discord.Embed(
+                    title="ส่งรูปภาพจากคำสั่ง!",
+                    description=f"รูปภาพจาก {ctx.author.mention}",
+                    color=discord.Color.green()
+                )
+                embed.set_image(url=attachment.url)
+                await ctx.send(embed=embed)        
 
 
 def is_valid_url(url: str) -> bool:
@@ -109,8 +142,8 @@ class WelcomeModal(discord.ui.Modal):
             required=False
         )
         self.description_input = discord.ui.TextInput(
-            label="เนื้อหา Embed (Description)",
-            placeholder="พิมพ์ข้อความต้อนรับ เช่น กฎอยู่ที่ <#1234567890>",
+            label="เนื้อหา Embed",
+            placeholder="เช่น อย่าลืมอ่านกฎใน <#1234567890>",
             default=description_val,
             style=discord.TextStyle.paragraph,
             max_length=1000,
@@ -123,7 +156,7 @@ class WelcomeModal(discord.ui.Modal):
             required=False
         )
         self.color_input = discord.ui.TextInput(
-            label="สี Embed (เช่น #3498db หรือเว้นว่างไว้)",
+            label="สี Embed (เช่น #3498db)",
             placeholder="#3498db",
             default=color_val,
             required=False,
@@ -138,45 +171,56 @@ class WelcomeModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         config = load_config()
         guild_id = str(interaction.guild.id)
-
         data = config.get(guild_id, {})
 
-        title_input = self.title_input.value or data.get("title", "🎉 ยินดีต้อนรับ!")
-        description_input = self.description_input.value or data.get("message", "ขอให้สนุกกับการอยู่ที่นี่!")
-        image_url = self.image_input.value or data.get("image_url", "")
-        color_input = self.color_input.value or data.get("color", "#5865F2")  # Discord blurple
+        title = self.title_input.value or data.get("title", "🎉 ยินดีต้อนรับ!")
+        desc = self.description_input.value or data.get("message", "ขอให้สนุกกับการอยู่ที่นี่!")
+        image = self.image_input.value or data.get("image_url", "")
+        color = self.color_input.value or data.get("color", "#5865F2")
 
-        # ตรวจสอบและแปลง hex color
         try:
-            embed_color = int(color_input.replace("#", ""), 16)
+            embed_color = int(color.replace("#", ""), 16)
         except ValueError:
-            embed_color = 0x5865F2  # fallback เป็น blurple
+            await interaction.response.send_message("❌ Invalid color code. Please use a valid hex value (e.g., #3498db).", ephemeral=True)
+            return
 
-        # บันทึก config
-        data["title"] = title_input
-        data["message"] = description_input
-        data["image_url"] = image_url
-        data["color"] = color_input
+        data["title"] = title
+        data["message"] = desc
+        data["image_url"] = image
+        data["color"] = color
         data["enabled"] = True
 
         config[guild_id] = data
         save_config(config)
 
-        # สร้าง Embed
         embed = discord.Embed(
-            title=title_input.replace("{user}", interaction.user.mention),
-            description=description_input.replace("{user}", interaction.user.mention),
+            title=title.replace("{user}", interaction.user.mention),
+            description=desc.replace("{user}", interaction.user.mention),
             color=embed_color
         )
-        if image_url:
-            embed.set_image(url=image_url)
+        if image:
+            embed.set_image(url=image)
         embed.set_footer(text=f"ตอนนี้เรามี {interaction.guild.member_count} คนในเซิร์ฟเวอร์ 💬")
 
         await interaction.response.send_message(
-            content=f"🎉 ยินดีต้อนรับ {interaction.user.mention}!",
+            content=f"✅ บันทึกข้อความต้อนรับแล้ว!",
             embed=embed,
             ephemeral=True
         )
+
+class WelcomeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)  # ❗ ให้ปุ่มคงอยู่ถาวร
+
+    @discord.ui.button(label="ตั้งค่าข้อความต้อนรับ", style=discord.ButtonStyle.primary, custom_id="open_welcome_modal")
+    async def open_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        config = load_config().get(str(interaction.guild.id), {})
+        await interaction.response.send_modal(WelcomeModal(
+            title_val=config.get("title", ""),
+            description_val=config.get("message", ""),
+            image_val=config.get("image_url", ""),
+            color_val=config.get("color", "")
+        ))
 
 
 
@@ -229,10 +273,12 @@ class GoodbyeModal(discord.ui.Modal):
         color_input = self.color_input.value or data.get("goodbye_color", "#e74c3c")  # แดง default
 
         try:
+            # ใช้ตัวแปร color_input แทน color
             embed_color = int(color_input.replace("#", ""), 16)
         except ValueError:
-            embed_color = 0xe74c3c
+            embed_color = 0x5865F2  # Default color (e.g., Discord's blurple)
 
+        # บันทึกข้อมูลที่ปรับแต่งไว้ใน config
         data["goodbye_title"] = title
         data["goodbye_message"] = message
         data["goodbye_image_url"] = image_url
@@ -242,6 +288,7 @@ class GoodbyeModal(discord.ui.Modal):
         config[guild_id] = data
         save_config(config)
 
+        # สร้าง Embed
         embed = discord.Embed(
             title=title.replace("{user}", interaction.user.mention),
             description=message.replace("{user}", interaction.user.mention),
@@ -257,41 +304,530 @@ class GoodbyeModal(discord.ui.Modal):
             ephemeral=True
         )
 
+@bot.event
+async def on_raw_reaction_add(payload):
+    if payload.guild_id is None:
+        return
 
+    config = load_config()
+    guild_config = config.get(str(payload.guild_id))
+
+    if not guild_config or payload.message_id != guild_config.get("message_id"):
+        return
+
+    for role_id, data in guild_config.items():
+        if isinstance(data, dict) and data.get("emoji") == str(payload.emoji):
+            guild = bot.get_guild(payload.guild_id)
+            member = guild.get_member(payload.user_id)
+            role = guild.get_role(int(role_id))
+
+            if role and member:
+                try:
+                    await member.add_roles(role)
+                    print(f"✅ Gave role {role.name} to {member.display_name}")
+                except discord.Forbidden:
+                    print(f"❌ Missing permission to add role {role.name} to {member.display_name}")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+            break
+
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    if payload.guild_id is None:
+        return  # Ignore DMs
+
+    config = load_config()
+    guild_config = config.get(str(payload.guild_id))
+
+    if not guild_config or payload.message_id != guild_config.get("message_id"):
+        return  # Not the correct message
+
+    for role_id, data in guild_config.items():
+        if isinstance(data, dict) and data.get("emoji") == str(payload.emoji):
+            guild = bot.get_guild(payload.guild_id)
+            member = guild.get_member(payload.user_id)
+            role = guild.get_role(int(role_id))
+            if role and member:
+                await member.remove_roles(role)
+                break
+
+
+@bot.event
+async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+    if user.bot:  # ข้ามบอท
+        return
+
+    # ตรวจสอบว่า reaction อยู่ใน embed ที่เราสร้างหรือไม่
+    if not isinstance(reaction.message.embeds, list) or len(reaction.message.embeds) == 0:
+        return
+
+    embed = reaction.message.embeds[0]
+    if "select your role" not in embed.title:  # ตรวจสอบว่าเป็น Embed สำหรับรับยศหรือไม่
+        return
+
+    # หา role ตามอิโมจิ
+    emoji = reaction.emoji
+    guild_config = load_config().get(str(reaction.message.guild.id))
+    if not guild_config:
+        return
+
+    for role_id, data in guild_config.items():
+        if isinstance(data, dict) and "emoji" in data and data["emoji"] == emoji:
+            role = reaction.message.guild.get_role(int(role_id))
+            if not role:  # ถ้าไม่ได้หา role
+                return
+
+            member = reaction.message.guild.get_member(user.id)
+            if not member:  # ถ้าไม่ได้หา member
+                return
+
+            if role not in member.roles:  # ถ้ายังไม่มีบทบาท
+                try:
+                    await member.add_roles(role)  # เพิ่มบทบาท
+                    await reaction.message.channel.send(f"✅ {user.name} ได้รับบทบาท {role.name} แล้ว")
+                except discord.Forbidden:
+                    await reaction.message.channel.send(f"❌ บอทไม่สามารถเพิ่มบทบาทให้ {user.name} ได้")
+            else:  # ถ้ามีบทบาทแล้ว
+                try:
+                    await member.remove_roles(role)  # ลบบทบาท
+                    await reaction.message.channel.send(f"❌ {user.name} ถูกลบบทบาท {role.name} แล้ว")
+                except discord.Forbidden:
+                    await reaction.message.channel.send(f"❌ บอทไม่สามารถลบบทบาทให้ {user.name} ได้")
+            break
+
+
+
+
+
+@bot.tree.command(name="setrole", description="ตั้งค่าระบบกดรับบทบาท")
+@has_any_role_name(["Admin", "Moderator", "คนดูแล"])
+@app_commands.describe(channel="ห้องที่จะให้บอทส่งข้อความกดรับบทบาท (หากต้องการเปลี่ยนห้อง)")
+async def setrole(interaction: discord.Interaction, channel: discord.TextChannel = None):
+    config = load_config()
+    guild_id = str(interaction.guild.id)
+    guild_config = config.get(guild_id)
+
+    if not guild_config:
+        await interaction.response.send_message("❌ ยังไม่มีข้อมูลบทบาทในเซิร์ฟเวอร์นี้", ephemeral=True)
+        return
+
+    if not any(isinstance(v, dict) and "emoji" in v for v in guild_config.values()):
+        await interaction.response.send_message("❌ ยังไม่มีการเพิ่มบทบาทใดๆ ด้วย emoji", ephemeral=True)
+        return
+
+    if "channel_id" not in guild_config and not channel:
+        await interaction.response.send_message("❌ กรุณาระบุห้องในครั้งแรกที่ใช้คำสั่ง", ephemeral=True)
+        return
+
+    if channel:
+        guild_config["channel_id"] = channel.id
+        config[guild_id] = guild_config
+        save_config(config)
+
+    # แสดงผลข้อมูลจาก guild_config
+    description_lines = ["°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･"]
+    for role_id, data in guild_config.items():
+        if isinstance(data, dict) and "emoji" in data:
+            emoji = data["emoji"]
+            description = data.get("description", "")
+            role = interaction.guild.get_role(int(role_id))
+
+            description_lines.append(f"{emoji} = {role.mention} {description} ୨୧ ≛")
+
+    description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･")
+
+    embed = discord.Embed(
+        title=guild_config.get("title", "✦ select your role ✦"),
+        description="\n".join(description_lines),
+        color=discord.Color.purple()
+    )
+    embed.set_image(url=guild_config.get("image_url", "https://media.tenor.com/J_BBejDgP1kAAAAC/ai-eyes.gif"))
+    embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url)
+
+    target_channel_id = guild_config.get("channel_id")
+    target_channel = interaction.guild.get_channel(target_channel_id)
+
+    if target_channel:
+        message = await target_channel.send(embed=embed)
+        # เพิ่ม emoji reactions
+        for emj, data in guild_config.items():
+            if isinstance(data, dict) and "emoji" in data:
+                try:
+                    await message.add_reaction(data["emoji"])
+                except discord.HTTPException:
+                    pass
+
+        # บันทึก message_id เพื่อใช้จับตอนกดอิโมจิ
+        guild_config["message_id"] = message.id
+        config[guild_id] = guild_config
+        save_config(config)
+
+        # ส่งข้อความตอบกลับ
+        await interaction.response.send_message(f"✅ ส่ง Embed ไปที่ {target_channel.mention} แล้ว", ephemeral=True)
+    else:
+        await interaction.response.send_message("❌ ไม่พบห้องที่ตั้งค่าไว้", ephemeral=True)
+
+
+
+
+@bot.tree.command(name="resetrole", description="รีเซ็ตบทบาทที่ตั้งไว้")
+async def resetrole(interaction: discord.Interaction):
+    config = load_config()
+    guild_id = str(interaction.guild.id)
+    guild_config = config.get(guild_id)
+
+    if not guild_config:
+        await interaction.response.send_message("❌ ยังไม่มีข้อมูลบทบาทในเซิร์ฟเวอร์นี้", ephemeral=True)
+        return
+
+    # ลบข้อความเดิมถ้ามี
+    message_id = guild_config.get("message_id")
+    channel_id = guild_config.get("channel_id")
+    if message_id and channel_id:
+        target_channel = interaction.guild.get_channel(channel_id)
+        if target_channel:
+            try:
+                message = await target_channel.fetch_message(message_id)
+                await message.delete()
+            except discord.NotFound:
+                pass
+
+    # ล้างเฉพาะ key ที่เป็น role_id (int string) ที่มี dict ข้างใน
+    keys_to_delete = [k for k, v in guild_config.items() if isinstance(v, dict) and "emoji" in v]
+    for k in keys_to_delete:
+        del guild_config[k]
+
+    # รีเซ็ต message_id
+    guild_config["message_id"] = None
+    config[guild_id] = guild_config
+    save_config(config)
+
+    await interaction.response.send_message("✅ รีเซ็ตระบบเลือกบทบาทเรียบร้อยแล้ว", ephemeral=True)
+
+
+
+
+
+# ใช้ Modal ในคำสั่ง embedrole
+@bot.tree.command(name="embedrole", description="เปลี่ยนหัวข้อ Embed ของระบบรับยศ")
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])
+async def embedrole(interaction: discord.Interaction):
+    modal = EmbedRoleModal()
+    await interaction.response.send_modal(modal)
+
+
+
+# คำสั่ง /editrole
+@bot.tree.command()
+@has_any_role_name(["Admin", "Moderator", "คนดูแล"])
+async def editrole(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str = "ไม่มีคำอธิบาย"):
+    """
+    คำสั่งนี้จะให้ผู้ใช้กรอกอิโมจิ, เลือกบทบาท, และกรอกคำอธิบาย
+    :param emoji: อิโมจิที่ต้องการใช้งาน
+    :param role: บทบาทที่ผู้ใช้เลือก
+    :param description: คำอธิบายที่ผู้ใช้กรอก (ค่าเริ่มต้นคือ "ไม่มีคำอธิบาย")
+    """
+    config = load_config()
+    guild_id = str(interaction.guild.id)
+    guild_config = config.get(guild_id, {})
+
+    if str(role.id) not in guild_config:
+        guild_config[str(role.id)] = {}
+
+    guild_config[str(role.id)]["emoji"] = emoji
+    guild_config[str(role.id)]["description"] = description
+    save_config(config)
+
+    await interaction.response.send_message(f"✅ ข้อมูลของบทบาท {role.name} ถูกอัปเดตสำเร็จ!\nEmoji: {emoji}\nคำอธิบาย: {description}")
+
+def load_config():
+    return {}  # จำลองให้เป็นไฟล์ config จริงๆ
+
+def save_config(config):
+    pass  # บันทึกข้อมูลลงในไฟล์   
+
+class EmbedRoleModal(Modal):
+    def __init__(self):
+        super().__init__(title="กรอกหัวข้อ Embed")
+        self.title_input = TextInput(
+            label="หัวข้อ Embed",
+            placeholder="กรุณากรอกหัวข้อที่ต้องการ",
+            min_length=1,
+            max_length=256,
+            required=True
+        )
+        self.add_item(self.title_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        title = self.title_input.value
+        config = load_config()
+        guild_id = str(interaction.guild.id)
+
+        # อัปเดต title ลง config
+        if guild_id not in config:
+            config[guild_id] = {}
+
+        config[guild_id]["title"] = title
+        save_config(config)
+
+        await interaction.response.send_message(f"✅ เปลี่ยนหัวข้อ Embed เป็น `{title}` แล้ว", ephemeral=True)
+
+class EditRoleModal(discord.ui.Modal, title="แก้ไขข้อมูลบทบาท"):
+    def __init__(self, emoji, role_name, role_id):
+        super().__init__()
+        self.emoji = emoji
+        self.role_id = role_id
+        self.role_name = role_name
+
+        self.add_item(discord.ui.TextInput(
+            label="คำอธิบายบทบาท",
+            placeholder="พิมพ์คำอธิบายที่คุณต้องการสำหรับบทบาทนี้...",
+            default=f"บทบาท: {role_name}",
+            style=discord.TextStyle.paragraph,
+            max_length=200,
+            required=True
+        ))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        description = self.children[0].value
+        await interaction.response.send_message(
+            f"✅ อัปเดตบทบาท **{self.role_name}** (ID: `{self.role_id}`) พร้อมคำอธิบายใหม่:\n{description}",
+            ephemeral=True
+        )
+
+class Sync(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @app_commands.command(name="sync", description="ซิงก์คำสั่ง Slash กับ Discord (global)")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def sync(self, interaction: discord.Interaction):
+        # ซิงก์คำสั่งแบบ global
+        await self.bot.tree.sync(guild=None)  # ไม่ระบุ guild จะทำการซิงก์แบบ global
+        await interaction.response.send_message("✅ คำสั่ง Slash ได้รับการซิงก์ทั่วทั้งบอทแล้ว!", ephemeral=True)
+
+    @sync.error
+    async def sync_error(self, interaction: discord.Interaction, error):
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ เกิดข้อผิดพลาดขณะซิงก์คำสั่ง", ephemeral=True)
+
+
+@bot.tree.command(name="embed", description="สร้างข้อความ Embed ที่สวยงาม")
+@app_commands.describe(
+    title="หัวข้อของ Embed",
+    description="คำอธิบายของ Embed",
+    color="สีของ Embed (ใช้ Hex หรือชื่อสี)"
+)
+async def embed(interaction: discord.Interaction, title: str, description: str, color: str = "#3498db"):
+    try:
+        embed_color = int(color.lstrip("#"), 16)
+        embed = discord.Embed(title=title, description=description, color=embed_color)
+        embed.set_footer(text=f"สร้างโดย {interaction.user}", icon_url=interaction.user.avatar.url)
+        await interaction.response.send_message(embed=embed)
+    except ValueError:
+        await interaction.response.send_message(
+            "❌ สีที่คุณใส่ไม่ถูกต้อง! กรุณาใช้ Hex (ตัวอย่าง: #3498db) หรือชื่อสีที่ถูกต้อง",
+            ephemeral=True
+        )
 
 
 
 def load_config():
-    if not os.path.exists(CONFIG_FILE):
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("Config file not found. Creating a new one.")
         return {}
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    except json.JSONDecodeError:
+        print("Config file is corrupted. Starting with an empty config.")
+        return {}
 
 def save_config(config):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4)
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+    except IOError as e:
+        print(f"Error saving config: {e}")
 
+def create_embed(role_items, guild):
+    """
+    สร้าง Embed สำหรับการแสดงข้อมูลบทบาท
+    """
+    embed = discord.Embed(
+        title="เลือกบทบาทของคุณ",
+        description="กดที่อีโมจิด้านล่างเพื่อรับบทบาท",
+        color=discord.Color.green()
+    )
+    for item in role_items:
+        role = guild.get_role(item["role_id"])
+        if role:
+            embed.add_field(
+                name=f"{item['emoji']} {role.name}",
+                value=item['description'],
+                inline=False
+            )
+    return embed
+
+async def add_reactions(message, role_items):
+    """
+    เพิ่ม Reaction ในข้อความที่ส่ง
+    """
+    for item in role_items:
+        try:
+            await message.add_reaction(item["emoji"])
+        except discord.HTTPException as e:
+            logging.warning(f"❌ Failed to add reaction {item['emoji']} to message {message.id}: {e}")
+
+
+
+@commands.command(name="create_roles_message")
+@commands.has_permissions(manage_roles=True)
+async def create_roles_message(ctx):
+    """
+    สร้างข้อความ Embed พร้อม Role Reaction โดยให้เลือกอีโมจิและชื่อบทบาทเอง
+    """
+    # สร้าง Embed
+    embed = discord.Embed(
+        title="★ Select Your Role ★",
+        description="เลือก Emoji ด้านล่างเพื่อรับบทบาทที่คุณต้องการ",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="★ Select Your Role ★")
+
+    # ตัวอย่าง: ให้ผู้ใช้กำหนดเอง
+    emoji_role_map = {
+        "🌸": "ruby",
+        "💎": "sapphire",
+        "🟨": "topaz",
+        "💚": "emerald",
+        "🔷": "diamond",
+        "💜": "amethyst",
+        "🌈": "opal"
+    }
+
+    # ตรวจสอบว่าไม่มี Emoji ซ้ำ
+    if len(emoji_role_map.keys()) != len(set(emoji_role_map.keys())):
+        await ctx.send("❌ มีอีโมจิซ้ำในรายการ กรุณาตรวจสอบและแก้ไข")
+        return
+
+    # เพิ่มข้อมูลใน Embed
+    for emoji, role_name in emoji_role_map.items():
+        embed.add_field(name=f"{emoji} {role_name}", value=f"รับบทบาท **{role_name}**", inline=False)
+
+    # ตรวจสอบสิทธิ์ของบอท
+    if not ctx.channel.permissions_for(ctx.guild.me).send_messages:
+        await ctx.send("❌ บอทไม่มีสิทธิ์ส่งข้อความในช่องนี้")
+        return
+
+    if not ctx.channel.permissions_for(ctx.guild.me).add_reactions:
+        await ctx.send("❌ บอทไม่มีสิทธิ์เพิ่ม Reaction ในช่องนี้")
+        return
+
+    # ส่ง Embed
+    message = await ctx.send(embed=embed)
+
+    # เพิ่ม Reaction ในข้อความ
+    for emoji in emoji_role_map.keys():
+        try:
+            await message.add_reaction(emoji)
+        except discord.HTTPException as e:
+            logging.warning(f"❌ Failed to add reaction {emoji}: {e}")
+
+    # บันทึกข้อมูล Emoji และ Role ในไฟล์
+    try:
+        with open("reaction_roles.json", "w", encoding="utf-8") as file:
+            import json
+            data = {
+                "message_id": message.id,
+                "channel_id": message.channel.id,
+                "emoji_role_map": emoji_role_map
+            }
+            json.dump(data, file, ensure_ascii=False, indent=4)
+    except IOError as e:
+        await ctx.send(f"❌ Failed to save reaction roles: {e}")
+        return
+
+    await ctx.send("✅ สร้างข้อความ Role Reaction สำเร็จ!")
+
+
+@bot.event
+async def on_application_command_error(interaction, error):
+    print(f"Command error: {error}")
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้", ephemeral=True)
+    else:
+        await interaction.response.send_message("⚠️ เกิดข้อผิดพลาดขณะประมวลผลคำสั่ง", ephemeral=True)  
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type == discord.InteractionType.component:
+        # ค้นหาค่าที่เลือกจาก Select
+        if isinstance(interaction.data, dict):
+            if interaction.data.get("custom_id") == "editrole":
+                emoji = interaction.data["values"][0]
+                role_id = int(interaction.data["values"][1])
+                role_name = discord.utils.get(interaction.guild.roles, id=role_id).name
+
+                # เปิด modal สำหรับกรอกคำอธิบาย
+                modal = EditRoleModal(emoji, role_name, role_id)
+                await interaction.response.send_modal(modal)
 
 
 @bot.event
 async def on_ready():
-    print("Bot is ready!")
+    print(f"✅ Logged in as {bot.user}")
     try:
-        await bot.tree.sync()
-        print(f"✅ Commands synced globally.")
+        # ซิงก์คำสั่ง Slash
+        synced_commands = await bot.tree.sync()
+        
+        # เพิ่ม Cog หลังจากซิงก์คำสั่งเสร็จ
+        await bot.add_cog(Sync(bot))  # เพิ่ม Cog นี้เมื่อบอทพร้อมทำงาน
+        
+        print(f"✅ Synced {len(synced_commands)} commands.")
+    except discord.Forbidden:
+        logging.error("❌ บอทไม่มีสิทธิ์ Sync คำสั่งในเซิร์ฟเวอร์บางแห่ง")
     except Exception as e:
-        print(f"Error syncing commands: {e}")
+        logging.error(f"❌ Failed to sync commands: {e}")
 
 
 @bot.event
-async def on_application_command_error(interaction: Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.CheckFailure):
-        # ถ้าเป็น CheckFailure (เช่น ไม่มีสิทธิ์)
-        await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้", ephemeral=True)
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send(
+            embed=discord.Embed(
+                title="❌ ไม่มีสิทธิ์",
+                description="คุณไม่มีสิทธิ์ในการใช้คำสั่งนี้",
+                color=discord.Color.red()
+            )
+        )
+    elif isinstance(error, commands.CommandNotFound):
+        await ctx.send(
+            embed=discord.Embed(
+                title="❌ คำสั่งไม่ถูกต้อง",
+                description="ไม่พบคำสั่งดังกล่าว โปรดตรวจสอบอีกครั้ง",
+                color=discord.Color.red()
+            )
+        )
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(
+            embed=discord.Embed(
+                title="⚠️ ขาดอาร์กิวเมนต์",
+                description="โปรดใส่ข้อมูลให้ครบถ้วน เช่น `/คำสั่ง <อาร์กิวเมนต์>`",
+                color=discord.Color.orange()
+            )
+        )
     else:
-        # ข้อผิดพลาดอื่น ๆ
-        await interaction.response.send_message("⚠️ เกิดข้อผิดพลาดขณะประมวลผลคำสั่ง", ephemeral=True)    
-
+        await ctx.send(
+            embed=discord.Embed(
+                title="❌ เกิดข้อผิดพลาด",
+                description=f"รายละเอียด: `{error}`",
+                color=discord.Color.red()
+            )
+        )
 
 @bot.event
 async def on_member_join(member):
@@ -359,29 +895,30 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-
-@bot.command()
-async def test(ctx, arg):
-    await ctx.send(arg)
-
-
-@bot.command()
-async def send_image(ctx):
-    # ถ้าผู้ใช้มีไฟล์แนบ
-    if ctx.message.attachments:
-        for attachment in ctx.message.attachments:
-            if attachment.filename.endswith(('png', 'jpg', 'jpeg', 'gif')):
-                # ส่งรูปภาพใน Embed
-                embed = discord.Embed(
-                    title="ส่งรูปภาพจากคำสั่ง!",
-                    description=f"รูปภาพจาก {ctx.author.mention}",
-                    color=discord.Color.green()
-                )
-                embed.set_image(url=attachment.url)
-                await ctx.send(embed=embed)    
-
-
-
+@bot.tree.command(name="example", description="ตัวอย่างคำสั่ง")
+async def example(interaction: discord.Interaction):
+    try:
+        # ตัวอย่างคำสั่งที่อาจเกิดข้อผิดพลาด
+        raise ValueError("ตัวอย่างข้อผิดพลาด")
+    except ValueError as e:
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="❌ ข้อผิดพลาด",
+                description=f"เกิดปัญหา: `{e}`",
+                color=discord.Color.red()
+            ),
+            ephemeral=True
+        )
+    except Exception as e:
+        # แจ้งเตือนข้อผิดพลาดอื่น ๆ
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="❌ เกิดข้อผิดพลาดไม่ทราบสาเหตุ",
+                description=f"รายละเอียด: `{e}`",
+                color=discord.Color.red()
+            ),
+            ephemeral=True
+        )
 
 @bot.tree.command(name="setwelcome", description="ตั้งค่าระบบต้อนรับ")
 @has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
@@ -540,6 +1077,65 @@ async def previewout(interaction: discord.Interaction, user: discord.User = None
         "✅ ทดสอบการออกจากเซิร์ฟเวอร์เสร็จสิ้นแล้ว", ephemeral=True
     )
 
+@bot.tree.command(name="previewroles", description="แสดง Embed preview ของระบบกดรับบทบาท")
+@has_any_role_name(["Admin", "Moderator", "คนดูแล"])
+async def previewroles(interaction: discord.Interaction):
+    config = load_config()
+    guild_id = str(interaction.guild.id)
+
+    if guild_id not in config:
+        await interaction.response.send_message("❌ ยังไม่มีการตั้งค่าบทบาทสำหรับเซิร์ฟเวอร์นี้", ephemeral=True)
+        return
+
+    guild_config = config[guild_id]
+    channel_id = guild_config.get("channel_id")
+    if not channel_id:
+        await interaction.response.send_message("❌ ยังไม่ได้ตั้งค่าห้องสำหรับระบบบทบาท", ephemeral=True)
+        return
+
+    description_lines = ["°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･"]
+    emojis_to_add = []
+    seen_emojis = set()  # ใช้สำหรับเก็บอิโมจิที่เคยใช้แล้ว
+
+    for emoji, data in guild_config.items():
+        # ข้ามข้อมูลที่ไม่ใช่ dictionary เช่น channel_id, message, title
+        if isinstance(data, dict):  # เช็กให้แน่ใจว่า `data` เป็น dict
+            role_id = data.get("role_id")
+            description = data.get("description", "")
+            role = interaction.guild.get_role(role_id)
+
+            if role:
+                # เช็คว่าอิโมจิซ้ำหรือยัง
+                if emoji not in seen_emojis:
+                    line = f"{emoji} {role.mention} {description} ୨୧ ≛"
+                    description_lines.append(line)
+                    emojis_to_add.append(emoji)
+                    seen_emojis.add(emoji)  # บันทึกอิโมจิที่ใช้แล้ว
+                else:
+                    continue  # ข้ามหากอิโมจิซ้ำ
+
+    description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･")
+
+    embed = discord.Embed(
+        title="✦ select your role ✦",
+        description="\n".join(description_lines),
+        color=discord.Color.purple()
+    )
+    embed.set_image(url="https://media.tenor.com/J_BBejDgP1kAAAAC/ai-eyes.gif")
+    embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url)
+
+    preview_msg = await interaction.channel.send(embed=embed)
+
+    for emoji in emojis_to_add:
+        try:
+            await preview_msg.add_reaction(emoji)
+        except discord.HTTPException:
+            pass  # ข้าม emoji ที่ไม่ valid หรือ custom ที่บอทใช้ไม่ได้
+
+    await interaction.response.send_message("✅ แสดง preview เรียบร้อย", ephemeral=True)
+
+
+
 
 
 @bot.tree.command(name="setout", description="ตั้งค่าระบบออกจากเซิร์ฟเวอร์")
@@ -608,7 +1204,6 @@ async def embedout(interaction: discord.Interaction):
 
 
 
-
 @bot.event
 async def on_member_remove(member):
     # ตรวจสอบการตั้งค่าข้อความออกจากเซิร์ฟเวอร์
@@ -643,13 +1238,6 @@ async def on_member_remove(member):
 
     # ส่ง Embed ไปยังช่องที่ตั้งค่าไว้
     await channel.send(embed=embed)
-
-
-
-
-
-
-from discord.ui import Button, View
 
 
 
@@ -742,14 +1330,20 @@ async def upload_picture(interaction: discord.Interaction):
     # ส่งคำสั่งให้ผู้ใช้คลิกปุ่ม
     await interaction.response.send_message("กรุณาคลิกปุ่มเพื่ออัปโหลดรูปภาพ", view=view)
 
+def is_admin(interaction: discord.Interaction) -> bool:
+    print(f"Checking admin for {interaction.user}")
+    return interaction.user.guild_permissions.administrator
 
 
-@bot.tree.command(name="admincommand", description="คำสั่งที่สามารถใช้ได้เฉพาะ Admin หรือ Moderator")
-async def admincommand(interaction: Interaction):
-    if not is_moderator_or_admin_slash(interaction):
-        await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้", ephemeral=True)
-        return
-    await interaction.response.send_message("คำสั่งนี้สามารถใช้งานได้")
+@bot.tree.command(name="some_admin_command")
+@app_commands.check(is_admin)
+async def some_admin_command(interaction: discord.Interaction):
+    await interaction.response.send_message("✅ This is an admin-only command.", ephemeral=True)
+
+@some_admin_command.error
+async def some_admin_command_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ คุณไม่มีสิทธิ์สำหรับคำสั่งนี้", ephemeral=True)
 
 
 server_on()   
