@@ -7,6 +7,7 @@ import random
 import asyncio
 import sys
 import logging
+import emoji
 from discord.app_commands import CheckFailure
 from myserver import server_on
 from discord.ext import commands
@@ -173,7 +174,8 @@ class WelcomeModal(discord.ui.Modal):
         guild_id = str(interaction.guild.id)
         data = config.get(guild_id, {})
 
-        title = self.title_input.value or data.get("title", "🎉 ยินดีต้อนรับ!")
+        # ใช้ key แยกเฉพาะสำหรับ welcome
+        title = self.title_input.value or data.get("embedwelcome_title", "🎉 ยินดีต้อนรับ!")
         desc = self.description_input.value or data.get("message", "ขอให้สนุกกับการอยู่ที่นี่!")
         image = self.image_input.value or data.get("image_url", "")
         color = self.color_input.value or data.get("color", "#5865F2")
@@ -184,11 +186,12 @@ class WelcomeModal(discord.ui.Modal):
             await interaction.response.send_message("❌ Invalid color code. Please use a valid hex value (e.g., #3498db).", ephemeral=True)
             return
 
-        data["title"] = title
-        data["message"] = desc
-        data["image_url"] = image
-        data["color"] = color
-        data["enabled"] = True
+        # บันทึกด้วยชื่อเฉพาะ
+        data["embedwelcome_title"] = title
+        data["embedwelcome_message"] = desc
+        data["embedwelcome_image_url"] = image
+        data["embedwelcome_color"] = color
+        data["embedwelcome_enabled"] = True
 
         config[guild_id] = data
         save_config(config)
@@ -207,6 +210,7 @@ class WelcomeModal(discord.ui.Modal):
             embed=embed,
             ephemeral=True
         )
+
 
 class WelcomeView(discord.ui.View):
     def __init__(self):
@@ -549,7 +553,7 @@ def save_config(config):
 
 class EmbedRoleModal(Modal):
     def __init__(self):
-        super().__init__(title="กรอกหัวข้อ Embed")
+        super().__init__(title="กรอกหัวข้อ Embed สำหรับระบบรับยศ")
         self.title_input = TextInput(
             label="หัวข้อ Embed",
             placeholder="กรุณากรอกหัวข้อที่ต้องการ",
@@ -564,14 +568,15 @@ class EmbedRoleModal(Modal):
         config = load_config()
         guild_id = str(interaction.guild.id)
 
-        # อัปเดต title ลง config
+        # ✅ ใช้ key แยกเฉพาะของ embedrole
         if guild_id not in config:
             config[guild_id] = {}
 
-        config[guild_id]["title"] = title
+        config[guild_id]["embedrole_title"] = title
         save_config(config)
 
-        await interaction.response.send_message(f"✅ เปลี่ยนหัวข้อ Embed เป็น `{title}` แล้ว", ephemeral=True)
+        await interaction.response.send_message(f"✅ เปลี่ยนหัวข้อ EmbedRole เป็น `{title}` แล้ว", ephemeral=True)
+
 
 class EditRoleModal(discord.ui.Modal, title="แก้ไขข้อมูลบทบาท"):
     def __init__(self, emoji, role_name, role_id):
@@ -993,9 +998,8 @@ async def previewwelcome(interaction: discord.Interaction, user: discord.User = 
     await interaction.response.defer(ephemeral=True)  # ให้ตอบกลับได้ทันที
 
     # เตรียมข้อความและ embed
-    text = data["message"].replace("{user}", user.mention)
-
-    title = f"{data.get('title', '🎉 ยินดีต้อนรับ!')}".replace("{user}", user.mention)
+    text = data["embedwelcome_message"].replace("{user}", user.mention)
+    title = f"{data.get('embedwelcome_title', '🎉 ยินดีต้อนรับ!')}".replace("{user}", user.mention)
 
     embed = discord.Embed(
         title=title,
@@ -1005,7 +1009,7 @@ async def previewwelcome(interaction: discord.Interaction, user: discord.User = 
     embed.set_thumbnail(url=user.display_avatar.url)
 
     if data.get("image_url"):
-        embed.set_image(url=data["image_url"])
+        embed.set_image(url=data["embedwelcome_image_url"])
 
     # ใช้ pytz เพื่อแปลงเวลาเป็นเวลาไทย
     thailand_tz = pytz.timezone('Asia/Bangkok')
@@ -1093,6 +1097,14 @@ async def previewroles(interaction: discord.Interaction):
         await interaction.response.send_message("❌ ยังไม่ได้ตั้งค่าห้องสำหรับระบบบทบาท", ephemeral=True)
         return
 
+    title = guild_config.get("embedrole_title", "📌 กรุณาเลือกยศด้านล่าง")
+    color_hex = guild_config.get("embedrole_color", "#2ecc71")
+
+    try:
+        color = int(color_hex.replace("#", ""), 16)
+    except ValueError:
+        color = 0x2ecc71  # fallback สีเขียว
+
     description_lines = ["°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･"]
     emojis_to_add = []
     seen_emojis = set()  # ใช้สำหรับเก็บอิโมจิที่เคยใช้แล้ว
@@ -1117,9 +1129,9 @@ async def previewroles(interaction: discord.Interaction):
     description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･")
 
     embed = discord.Embed(
-        title="✦ select your role ✦",
+        title=title,
         description="\n".join(description_lines),
-        color=discord.Color.purple()
+        color=color)
     )
     embed.set_image(url="https://media.tenor.com/J_BBejDgP1kAAAAC/ai-eyes.gif")
     embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url)
@@ -1261,35 +1273,19 @@ async def upload_image(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="embedwelcome", description="แก้ไขข้อความต้อนรับแบบ Embed")
-@has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
+@has_any_role_name(["คนดูแล", "Moderator", "Admin"])
 async def embedwelcome(interaction: discord.Interaction):
     config = load_config()
     guild_id = str(interaction.guild.id)
     data = config.get(guild_id, {})
 
-    # ส่งค่าที่มีอยู่ไปให้ modal
     modal = WelcomeModal(
-        title_val=data.get("title", ""),
-        description_val=data.get("message", ""),
-        image_val=data.get("image_url", "")
+        title_val=data.get("embedwelcome_title", ""),
+        description_val=data.get("embedwelcome_message", ""),
+        image_val=data.get("embedwelcome_image_url", ""),
+        color_val=data.get("embedwelcome_color", "#5865F2")
     )
     await interaction.response.send_modal(modal)
-
-    embed = discord.Embed(
-        title=data.get("title", "🎉 ยินดีต้อนรับ!"),
-        description=data.get("message", "ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์!"),
-        color=discord.Color.purple()
-    )
-
-    # ใช้ pytz เพื่อแปลงเวลาเป็นเวลาไทย
-    thailand_tz = pytz.timezone('Asia/Bangkok')
-    current_time = datetime.now(thailand_tz).strftime('%H:%M:%S %Y-%m-%d')  # เวลาในรูปแบบของไทย
-
-    # เพิ่ม footer ลงใน Embed พร้อมแสดงเวลาปัจจุบัน
-    embed.set_footer(text=f"สมาชิกใหม่เข้ามา! เวลา: {current_time} | เซิร์ฟเวอร์: {interaction.guild.name}")
-
-    await interaction.followup.send(embed=embed)
-
 
 
 @bot.tree.command(name="upload_picture", description="Upload an image to the server")
