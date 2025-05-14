@@ -1131,7 +1131,7 @@ async def previewroles(interaction: discord.Interaction):
     embed = discord.Embed(
         title=title,
         description="\n".join(description_lines),
-        color=color)
+        color=color
     )
     embed.set_image(url="https://media.tenor.com/J_BBejDgP1kAAAAC/ai-eyes.gif")
     embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url)
