@@ -938,6 +938,8 @@ async def on_message(message):
             response = random.choice(sleep_messages)
         else:  # 14:00 - 01:59
             response = random.choice(busy_messages)
+            
+        await message.channel.send(response)
     
     await bot.process_commands(message)
 
