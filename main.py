@@ -27,6 +27,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 intents = discord.Intents.all()
 intents.guilds = True
 intents.members = True
+intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 TARGET_USER_ID = 397002650417233921
