@@ -29,6 +29,7 @@ intents.guilds = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+TARGET_USER_ID = 397002650417233921
 
 @bot.command()
 @commands.is_owner()
@@ -912,6 +913,9 @@ async def on_message(message):
 
         await message.channel.send(f"ลองกิน **{menu}** ดูไหม? {emoji}")
 
+    if any(user.id == TARGET_USER_ID for user in message.mentions):
+        await message.channel.send("ว่าไงสุดหล่อ รอก่อนนะ 😄")
+    
     await bot.process_commands(message)
 
 
