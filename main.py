@@ -449,7 +449,7 @@ async def setrole(interaction: discord.Interaction, channel: discord.TextChannel
     except ValueError:
         color = 0x2ecc71
 
-    description_lines = ["°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･"]
+    description_lines = ["°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔:･°❀⋆.ೃ࿔:･"]
     for emoji, data in guild_config.items():
         if isinstance(data, dict) and "role_id" in data:
             role_id = data["role_id"]
@@ -459,7 +459,7 @@ async def setrole(interaction: discord.Interaction, channel: discord.TextChannel
             if role:
                 description_lines.append(f"{emoji} = {role.mention} {description} ୨୧ ≛")
 
-    description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･")
+    description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔:･°❀⋆.ೃ࿔:･")
 
     embed = discord.Embed(
         title=title,
