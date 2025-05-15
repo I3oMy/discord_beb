@@ -457,7 +457,7 @@ async def setrole(interaction: discord.Interaction, channel: discord.TextChannel
             role = interaction.guild.get_role(role_id)
 
             if role:
-                description_lines.append(f"{emoji} = {role.mention} {description} ୨୧ ≛")
+                description_lines.append(f"{emoji} = {role.mention}` {description} ⋆｡°✩")
 
     description_lines.append("°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔*:･°❀⋆.ೃ࿔:･°❀⋆.ೃ࿔:･")
 
@@ -1134,7 +1134,7 @@ async def previewroles(interaction: discord.Interaction):
             if role:
                 # เช็คว่าอิโมจิซ้ำหรือยัง
                 if emoji not in seen_emojis:
-                    line = f"{emoji} {role.mention} {description} ୨୧ ≛"
+                    line = f"{emoji} {role.mention} {description} ⋆｡°✩"
                     description_lines.append(line)
                     emojis_to_add.append(emoji)
                     seen_emojis.add(emoji)  # บันทึกอิโมจิที่ใช้แล้ว
