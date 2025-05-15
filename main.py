@@ -32,6 +32,22 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 TARGET_USER_ID = 397002650417233921
 
+
+sleep_messages = [
+    "ตอนนี้เขานอนอยู่ครับ 😴",
+    "กำลังฝันหวานอยู่เลย~ 🌙",
+    "พักผ่อนอยู่ครับ อย่าเพิ่งกวน~ 😌"
+]
+
+busy_messages = [
+    "ว่าไงสุดหล่อ รอแป๊บนะ 🍵",
+    "เขาติดภารกิจอยู่ เดี๋ยวตอบนะ~ 💼",
+    "ยังไม่ว่างคุยตอนนี้ รอสักครู่ 🕒"
+]
+
+
+
+
 @bot.command()
 @commands.is_owner()
 async def restart(ctx):
@@ -915,7 +931,13 @@ async def on_message(message):
         await message.channel.send(f"ลองกิน **{menu}** ดูไหม? {emoji}")
 
     if any(user.id == TARGET_USER_ID for user in message.mentions):
-        await message.channel.send("ว่าไงสุดหล่อ รอก่อนนะ 😄")
+        now = datetime.datetime.now()
+        hour = now.hour
+
+        if 2 <= hour < 14:
+            response = random.choice(sleep_messages)
+        else:  # 14:00 - 01:59
+            response = random.choice(busy_messages)
     
     await bot.process_commands(message)
 
