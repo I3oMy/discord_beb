@@ -931,7 +931,7 @@ async def on_message(message):
         await message.channel.send(f"ลองกิน **{menu}** ดูไหม? {emoji}")
 
     if any(user.id == TARGET_USER_ID for user in message.mentions):
-        now = datetime.datetime.now()
+        now = datetime.now()
         hour = now.hour
 
         if 2 <= hour < 14:
