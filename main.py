@@ -1001,41 +1001,41 @@ async def is_live(username):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-            )
-            page = await context.new_page()
-
+            page = await browser.new_page()
             url = f"https://www.tiktok.com/@{username}/live"
-            await page.goto(url, timeout=20000)
-            await page.wait_for_load_state("networkidle")
-            await page.wait_for_timeout(3000)
-
-            # DEBUG: พิมพ์ HTML
-            html = await page.content()
-            print(html[:1000])  # ลองดูว่าโหลดสำเร็จไหม
-
-            # ลองดึง SIGI_STATE
             try:
-                js_data = await page.evaluate("() => window['SIGI_STATE']")
-            except:
-                print("[ERROR] SIGI_STATE ไม่พบ")
+                response = await page.goto(url, timeout=20000)
+                if response.status != 200:
+                    print(f"[ERROR] HTTP {response.status} จาก {url}")
+                    return False, None, None, None
+
+                # ตรวจสอบว่ามี "liveRoom" หรือ "LIVE" ใน HTML
+                html = await page.content()
+                if "liveRoom" not in html and "LIVE" not in html:
+                    return False, None, None, None
+
+                # หัวข้อ
+                match_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
+                title = match_title.group(1) if match_title else "Live on TikTok"
+
+                # รูป preview
+                match_img = re.search(r'<meta property="og:image" content="(.*?)"', html)
+                image = match_img.group(1) if match_img else None
+
+                # คนดู
+                match_viewers = re.search(r'{"viewerCount":(\d+)', html)
+                viewers = int(match_viewers.group(1)) if match_viewers else 0
+
+                return True, image, title, viewers
+            except Exception as e:
+                print(f"[ERROR] โหลด TikTok ไม่สำเร็จ: {e}")
                 return False, None, None, None
             finally:
                 await browser.close()
-
-            live_info = js_data.get("LiveRoom", {}).get("liveRoomUserInfo", {}).get("user", {})
-            live_room = live_info.get("liveRoom", {})
-
-            is_live = live_info.get("roomStatus") == 1
-            title = live_room.get("title", "Live on TikTok")
-            cover = live_room.get("cover", {}).get("url", None)
-            viewers = live_room.get("stats", {}).get("viewerCount", 0)
-
-            return is_live, cover, title, viewers
     except Exception as e:
         print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
         return False, None, None, None
+
 
 
 
