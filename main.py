@@ -998,31 +998,38 @@ def remove_tiktok(guild_id, username):
 
 # ---------- TikTok Live Checker ---------- #
 async def is_live(username):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        try:
-            await page.goto(f"https://www.tiktok.com/@{username}/live", timeout=30000)
-            html = await page.content()
-            
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+
+            try:
+                await page.goto(f"https://www.tiktok.com/@{username}/live", timeout=15000)
+                html = await page.content()
+            except Exception as e:
+                print(f"[ERROR] โหลด TikTok ไม่สำเร็จ: {e}")
+                return False, None, None, None
+            finally:
+                await browser.close()
+
             # รูปพรีวิว
             match_img = re.search(r'<meta property="og:image" content="(.*?)"', html)
             image = match_img.group(1) if match_img else None
-            
+
             # หัวข้อไลฟ์
             match_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
             title = match_title.group(1) if match_title else "Live on TikTok"
 
             # คนดู
             match_viewers = re.search(r'{"viewerCount":(\d+)', html)
-            viewers = int(match_viewers.group(1)) if match_viewers else None
+            viewers = int(match_viewers.group(1)) if match_viewers else 0
 
+            # ตรวจว่าไลฟ์อยู่ไหม
             live = "LIVE" in html or "liveRoom" in html
             return live, image, title, viewers
-        except:
-            return False, None, None, None
-        finally:
-            await browser.close()
+    except Exception as e:
+        print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
+        return False, None, None, None
 
 
 
@@ -1097,13 +1104,19 @@ async def listtiktok(interaction: discord.Interaction):
 @bot.tree.command(name="testtiktok", description="ทดสอบแจ้งเตือนไลฟ์ TikTok")
 @app_commands.describe(username="ชื่อผู้ใช้ TikTok")
 async def testtiktok(interaction: discord.Interaction, username: str):
-    channel = interaction.channel
-    is_on, preview_url, stream_title, viewers = await is_live(username)
-    if is_on:
-        await send_embed(channel, username, preview_url, stream_title, viewers)
-        await interaction.response.send_message("✅ ส่งข้อความเรียบร้อย", ephemeral=True)
-    else:
-        await interaction.response.send_message("❌ ยังไม่ได้ไลฟ์", ephemeral=True)
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        channel = interaction.channel
+        is_on, preview_url, stream_title, viewers = await is_live(username)
+        if is_on:
+            await send_embed(channel, username, preview_url, stream_title, viewers)
+            await interaction.followup.send("✅ ส่งข้อความเรียบร้อย")
+        else:
+            await interaction.followup.send("❌ ยังไม่ได้ไลฟ์")
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ เกิดข้อผิดพลาด: `{e}`")
+
+
 
 
 
