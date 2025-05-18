@@ -9,7 +9,7 @@ import sys
 import logging
 from discord.app_commands import CheckFailure
 from myserver import server_on
-from discord.ext import commands
+from discord.ext import tasks, commands
 from discord import app_commands
 from discord import ui, Interaction
 from datetime import datetime
@@ -18,7 +18,7 @@ from cogs.embed_command import EmbedCommand
 from cogs.role_reaction import RoleReactionHandler
 from discord.ui import Modal, TextInput, Button, View, Select
 from discord import TextStyle
-
+from playwright.async_api import async_playwright
 
 CONFIG_FILE = "config.json"
 
@@ -31,7 +31,7 @@ intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 TARGET_USER_ID = 397002650417233921
-
+last_status = {}
 
 sleep_messages = [
     "ตอนนี้เขานอนอยู่ครับ 😴",
@@ -969,6 +969,119 @@ async def example(interaction: discord.Interaction):
             ),
             ephemeral=True
         )
+
+
+def get_guild_data(guild_id):
+    config = load_config()
+    return config.get(str(guild_id), {})
+
+def set_channel(guild_id, channel_id):
+    config = load_config()
+    config[str(guild_id)] = config.get(str(guild_id), {})
+    config[str(guild_id)]["channel_id"] = channel_id
+    save_config(config)
+
+def add_tiktok(guild_id, username):
+    config = load_config()
+    guild_data = config.setdefault(str(guild_id), {})
+    users = guild_data.setdefault("tiktok_usernames", [])
+    if username not in users:
+        users.append(username)
+    save_config(config)
+
+def remove_tiktok(guild_id, username):
+    config = load_config()
+    users = config.get(str(guild_id), {}).get("tiktok_usernames", [])
+    if username in users:
+        users.remove(username)
+    save_config(config)
+
+# ---------- TikTok Live Checker ---------- #
+async def is_live(username):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        try:
+            await page.goto(f"https://www.tiktok.com/@{username}/live", timeout=30000)
+            html = await page.content()
+            match = re.search(r'<meta property="og:image" content="(.*?)"', html)
+            image = match.group(1) if match else None
+            live = "LIVE" in html or "liveRoom" in html
+            return live, image
+        except:
+            return False, None
+        finally:
+            await browser.close()
+
+class WatchButton(View):
+    def __init__(self, url): super().__init__(); self.add_item(Button(label="Watch Stream", url=url))
+
+async def send_embed(channel, username, preview):
+    url = f"https://www.tiktok.com/@{username}/live"
+    embed = discord.Embed(title=f"{username} กำลังไลฟ์!", description="🎥 คลิกเข้ามาดูเลย!", color=0xff0050)
+    embed.set_author(name=username, icon_url="https://www.tiktok.com/favicon.ico")
+    if preview: embed.set_image(url=preview)
+    embed.add_field(name="ลิงก์ TikTok", value=f"[ชมสตรีม]({url})")
+    await channel.send(content="@everyone", embed=embed, view=WatchButton(url))
+
+# ---------- Loop ---------- #
+@tasks.loop(minutes=1)
+async def check_tiktoks():
+    config = load_config()
+    for guild_id, data in config.items():
+        guild_id = int(guild_id)
+        channel = bot.get_channel(data.get("channel_id"))
+        if not channel: continue
+        usernames = data.get("tiktok_usernames", [])
+        for username in usernames:
+            is_on, image = await is_live(username)
+            if last_status.get(guild_id, {}).get(username) != is_on:
+                last_status.setdefault(guild_id, {})[username] = is_on
+                if is_on:
+                    await send_embed(channel, username, image)
+
+# ---------- Slash Commands ---------- #
+@bot.tree.command(name="setchannel", description="เลือกห้องให้บอทแจ้งไลฟ์ TikTok")
+@app_commands.checks.has_permissions(administrator=True)
+async def setchannel(interaction: discord.Interaction):
+    set_channel(interaction.guild.id, interaction.channel.id)
+    await interaction.response.send_message("✅ ตั้งค่าห้องสำเร็จ!", ephemeral=True)
+
+@bot.tree.command(name="addtiktok", description="เพิ่มชื่อ TikTok ที่จะติดตาม")
+@app_commands.describe(username="ชื่อผู้ใช้ TikTok (ไม่ต้องมี @)")
+async def addtiktok(interaction: discord.Interaction, username: str):
+    add_tiktok(interaction.guild.id, username)
+    await interaction.response.send_message(f"✅ เพิ่ม `{username}` แล้ว", ephemeral=True)
+
+@bot.tree.command(name="removetiktok", description="ลบชื่อ TikTok ที่ไม่ต้องติดตามแล้ว")
+@app_commands.describe(username="ชื่อผู้ใช้ TikTok ที่จะลบ")
+async def removetiktok(interaction: discord.Interaction, username: str):
+    remove_tiktok(interaction.guild.id, username)
+    await interaction.response.send_message(f"🗑️ ลบ `{username}` แล้ว", ephemeral=True)
+
+@bot.tree.command(name="listtiktok", description="ดูรายชื่อ TikTok ที่กำลังติดตาม")
+async def listtiktok(interaction: discord.Interaction):
+    data = get_guild_data(interaction.guild.id)
+    users = data.get("tiktok_usernames", [])
+    if not users:
+        await interaction.response.send_message("❌ ยังไม่มีชื่อ TikTok ในระบบ", ephemeral=True)
+    else:
+        await interaction.response.send_message("📺 TikTok ที่ติดตาม:\n• " + "\n• ".join(users), ephemeral=True)
+
+
+@bot.tree.command(name="testtiktok", description="ทดสอบการแจ้งไลฟ์ TikTok")
+@app_commands.describe(username="ชื่อผู้ใช้ TikTok (ไม่ต้องมี @)")
+async def testtiktok(interaction: discord.Interaction, username: str):
+    await interaction.response.defer(ephemeral=True)
+    preview_url = "https://link.to/fake-thumbnail.jpg"  # หรือจะดึงจริงก็ได้
+    url = f"https://www.tiktok.com/@{username}/live"
+    channel = bot.get_channel(get_guild_data(interaction.guild.id).get("channel_id"))
+    if channel:
+        await send_embed(channel, username, preview_url)
+        await interaction.followup.send("✅ ทดสอบส่ง Embed เรียบร้อย!", ephemeral=True)
+    else:
+        await interaction.followup.send("❌ ยังไม่ได้ตั้งค่าห้องด้วย `/setchannel`", ephemeral=True)
+
 
 @bot.tree.command(name="setwelcome", description="ตั้งค่าระบบต้อนรับ")
 @has_any_role_name(["คนดูแล", "Moderator", "Admin"])  # ✅ ใส่ชื่อบทบาทที่อนุญาต
