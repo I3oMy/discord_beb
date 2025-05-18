@@ -1006,29 +1006,27 @@ async def is_live(username):
 
             url = f"https://www.tiktok.com/@{username}/live"
             await page.goto(url, timeout=15000)
-            await page.wait_for_timeout(2000)  # รอโหลด JS เล็กน้อย
+            await page.wait_for_timeout(2000)  # รอโหลด JS
 
-            # ดึง JSON จาก window["SIGI_STATE"]
-            js = await page.evaluate("() => window['SIGI_STATE']")
+            # ดึงตัวแปร JavaScript SIGI_STATE ที่เก็บข้อมูล user และ live
+            js_data = await page.evaluate("() => window['SIGI_STATE']")
             await browser.close()
 
-            user_data = js.get("UserModule", {}).get("users", {}).get(username)
-            live_data = js.get("LiveRoom", {}).get("liveRoomUserInfo", {}).get("user")
+            # ตรวจสอบว่ามีข้อมูลผู้ใช้หรือไม่
+            live_info = js_data.get("LiveRoom", {}).get("liveRoomUserInfo", {}).get("user", {})
+            live_room = live_info.get("liveRoom", {})
 
-            if not user_data or not live_data:
-                return False, None, None, None
+            is_live = live_info.get("roomStatus") == 1  # roomStatus = 1 แปลว่ากำลังไลฟ์
+            title = live_room.get("title", "Live on TikTok")
+            cover = live_room.get("cover", {}).get("url", None)
+            viewers = live_room.get("stats", {}).get("viewerCount", 0)
 
-            is_live = live_data.get("roomStatus") == 1  # 1 = กำลังไลฟ์
-
-            title = live_data.get("liveRoom", {}).get("title", "Live on TikTok")
-            cover = live_data.get("liveRoom", {}).get("cover", {}).get("url")
-            viewer_count = live_data.get("liveRoom", {}).get("stats", {}).get("viewerCount", 0)
-
-            return is_live, cover, title, viewer_count
+            return is_live, cover, title, viewers
 
     except Exception as e:
-        print(f"[is_live ERROR] {e}")
+        print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
         return False, None, None, None
+
 
 
 
