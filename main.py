@@ -1001,31 +1001,42 @@ async def is_live(username):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context()
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            )
             page = await context.new_page()
 
             url = f"https://www.tiktok.com/@{username}/live"
-            await page.goto(url, timeout=15000)
-            await page.wait_for_timeout(2000)  # รอโหลด JS
+            await page.goto(url, timeout=20000)
+            await page.wait_for_load_state("networkidle")
+            await page.wait_for_timeout(3000)
 
-            # ดึงตัวแปร JavaScript SIGI_STATE ที่เก็บข้อมูล user และ live
-            js_data = await page.evaluate("() => window['SIGI_STATE']")
-            await browser.close()
+            # DEBUG: พิมพ์ HTML
+            html = await page.content()
+            print(html[:1000])  # ลองดูว่าโหลดสำเร็จไหม
 
-            # ตรวจสอบว่ามีข้อมูลผู้ใช้หรือไม่
+            # ลองดึง SIGI_STATE
+            try:
+                js_data = await page.evaluate("() => window['SIGI_STATE']")
+            except:
+                print("[ERROR] SIGI_STATE ไม่พบ")
+                return False, None, None, None
+            finally:
+                await browser.close()
+
             live_info = js_data.get("LiveRoom", {}).get("liveRoomUserInfo", {}).get("user", {})
             live_room = live_info.get("liveRoom", {})
 
-            is_live = live_info.get("roomStatus") == 1  # roomStatus = 1 แปลว่ากำลังไลฟ์
+            is_live = live_info.get("roomStatus") == 1
             title = live_room.get("title", "Live on TikTok")
             cover = live_room.get("cover", {}).get("url", None)
             viewers = live_room.get("stats", {}).get("viewerCount", 0)
 
             return is_live, cover, title, viewers
-
     except Exception as e:
         print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
         return False, None, None, None
+
 
 
 
