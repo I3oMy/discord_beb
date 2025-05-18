@@ -1001,41 +1001,35 @@ async def is_live(username):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            context = await browser.new_context()
+            page = await context.new_page()
 
-            live_url = f"https://www.tiktok.com/@{username}/live"
-            try:
-                response = await page.goto(live_url, timeout=15000)
-                final_url = page.url
+            url = f"https://www.tiktok.com/@{username}/live"
+            await page.goto(url, timeout=15000)
+            await page.wait_for_timeout(2000)  # รอโหลด JS เล็กน้อย
 
-                if not final_url.endswith("/live"):
-                    # ถ้าเปลี่ยนลิงก์ แปลว่าไม่ได้ไลฟ์
-                    await browser.close()
-                    return False, None, None, None
+            # ดึง JSON จาก window["SIGI_STATE"]
+            js = await page.evaluate("() => window['SIGI_STATE']")
+            await browser.close()
 
-                html = await page.content()
-            except Exception as e:
-                print(f"[ERROR] โหลด TikTok ไม่สำเร็จ: {e}")
+            user_data = js.get("UserModule", {}).get("users", {}).get(username)
+            live_data = js.get("LiveRoom", {}).get("liveRoomUserInfo", {}).get("user")
+
+            if not user_data or not live_data:
                 return False, None, None, None
-            finally:
-                await browser.close()
 
-            # รูปพรีวิว
-            match_img = re.search(r'<meta property="og:image" content="(.*?)"', html)
-            image = match_img.group(1) if match_img else None
+            is_live = live_data.get("roomStatus") == 1  # 1 = กำลังไลฟ์
 
-            # หัวข้อไลฟ์
-            match_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
-            title = match_title.group(1) if match_title else "Live on TikTok"
+            title = live_data.get("liveRoom", {}).get("title", "Live on TikTok")
+            cover = live_data.get("liveRoom", {}).get("cover", {}).get("url")
+            viewer_count = live_data.get("liveRoom", {}).get("stats", {}).get("viewerCount", 0)
 
-            # คนดู
-            match_viewers = re.search(r'{"viewerCount":(\d+)', html)
-            viewers = int(match_viewers.group(1)) if match_viewers else 0
+            return is_live, cover, title, viewer_count
 
-            return True, image, title, viewers
     except Exception as e:
-        print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
+        print(f"[is_live ERROR] {e}")
         return False, None, None, None
+
 
 
 
