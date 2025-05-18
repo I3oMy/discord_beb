@@ -1004,25 +1004,43 @@ async def is_live(username):
         try:
             await page.goto(f"https://www.tiktok.com/@{username}/live", timeout=30000)
             html = await page.content()
-            match = re.search(r'<meta property="og:image" content="(.*?)"', html)
-            image = match.group(1) if match else None
+
+            # ดึงภาพพรีวิว
+            image_match = re.search(r'<meta property="og:image" content="(.*?)"', html)
+            image = image_match.group(1) if image_match else None
+
+            # ดึงชื่อไลฟ์
+            title_match = re.search(r'<meta property="og:title" content="(.*?)"', html)
+            stream_title = title_match.group(1) if title_match else f"{username} กำลังไลฟ์!"
+
+            # ตรวจสถานะ live
             live = "LIVE" in html or "liveRoom" in html
-            return live, image
+            return live, image, stream_title
+
         except:
-            return False, None
+            return False, None, None
         finally:
             await browser.close()
+
+
 
 class WatchButton(View):
     def __init__(self, url): super().__init__(); self.add_item(Button(label="Watch Stream", url=url))
 
-async def send_embed(channel, username, preview):
+async def send_embed(channel, username, preview, stream_title):
     url = f"https://www.tiktok.com/@{username}/live"
-    embed = discord.Embed(title=f"{username} กำลังไลฟ์!", description="🎥 คลิกเข้ามาดูเลย!", color=0xff0050)
+    embed = discord.Embed(
+        title=stream_title,
+        description=f"{username} กำลังไลฟ์อยู่ 🎥 คลิกเข้ามาดูเลย!",
+        color=0xff0050
+    )
     embed.set_author(name=username, icon_url="https://www.tiktok.com/favicon.ico")
-    if preview: embed.set_image(url=preview)
-    embed.add_field(name="ลิงก์ TikTok", value=f"[ชมสตรีม]({url})")
+    if preview:
+        embed.set_image(url=preview)
+    embed.add_field(name="View on TikTok", value=f"[ชมสตรีม]({url})")
     await channel.send(content="@everyone", embed=embed, view=WatchButton(url))
+
+
 
 # ---------- Loop ---------- #
 @tasks.loop(minutes=1)
@@ -1031,14 +1049,17 @@ async def check_tiktoks():
     for guild_id, data in config.items():
         guild_id = int(guild_id)
         channel = bot.get_channel(data.get("channel_id"))
-        if not channel: continue
+        if not channel:
+            continue
+
         usernames = data.get("tiktok_usernames", [])
         for username in usernames:
-            is_on, image = await is_live(username)
+            is_on, image, title = await is_live(username)
             if last_status.get(guild_id, {}).get(username) != is_on:
                 last_status.setdefault(guild_id, {})[username] = is_on
                 if is_on:
-                    await send_embed(channel, username, image)
+                    await send_embed(channel, username, image, title)
+
 
 # ---------- Slash Commands ---------- #
 @bot.tree.command(name="setchannel", description="เลือกห้องให้บอทแจ้งไลฟ์ TikTok")
