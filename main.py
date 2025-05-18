@@ -1004,41 +1004,43 @@ async def is_live(username):
         try:
             await page.goto(f"https://www.tiktok.com/@{username}/live", timeout=30000)
             html = await page.content()
+            
+            # รูปพรีวิว
+            match_img = re.search(r'<meta property="og:image" content="(.*?)"', html)
+            image = match_img.group(1) if match_img else None
+            
+            # หัวข้อไลฟ์
+            match_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
+            title = match_title.group(1) if match_title else "Live on TikTok"
 
-            # ดึงภาพพรีวิว
-            image_match = re.search(r'<meta property="og:image" content="(.*?)"', html)
-            image = image_match.group(1) if image_match else None
+            # คนดู
+            match_viewers = re.search(r'{"viewerCount":(\d+)', html)
+            viewers = int(match_viewers.group(1)) if match_viewers else None
 
-            # ดึงชื่อไลฟ์
-            title_match = re.search(r'<meta property="og:title" content="(.*?)"', html)
-            stream_title = title_match.group(1) if title_match else f"{username} กำลังไลฟ์!"
-
-            # ตรวจสถานะ live
             live = "LIVE" in html or "liveRoom" in html
-            return live, image, stream_title
-
+            return live, image, title, viewers
         except:
-            return False, None, None
+            return False, None, None, None
         finally:
             await browser.close()
+
 
 
 
 class WatchButton(View):
     def __init__(self, url): super().__init__(); self.add_item(Button(label="Watch Stream", url=url))
 
-async def send_embed(channel, username, preview, stream_title):
+async def send_embed(channel, username, preview, stream_title, viewers):
     url = f"https://www.tiktok.com/@{username}/live"
-    embed = discord.Embed(
-        title=stream_title,
-        description=f"{username} กำลังไลฟ์อยู่ 🎥 คลิกเข้ามาดูเลย!",
-        color=0xff0050
-    )
+    embed = discord.Embed(title=f"{username} กำลังไลฟ์!", description=stream_title or "🎥 เข้ามาดูเลย!", color=0xff0050)
     embed.set_author(name=username, icon_url="https://www.tiktok.com/favicon.ico")
     if preview:
         embed.set_image(url=preview)
-    embed.add_field(name="View on TikTok", value=f"[ชมสตรีม]({url})")
+    if viewers is not None:
+        embed.add_field(name="👁️ Viewers", value=str(viewers), inline=True)
+    embed.add_field(name="🔗 ลิงก์ TikTok", value=f"[ชมสตรีม]({url})", inline=True)
     await channel.send(content="@everyone", embed=embed, view=WatchButton(url))
+
 
 
 
@@ -1054,11 +1056,11 @@ async def check_tiktoks():
 
         usernames = data.get("tiktok_usernames", [])
         for username in usernames:
-            is_on, image, title = await is_live(username)
+            is_on, preview, title, viewers = await is_live(username)
             if last_status.get(guild_id, {}).get(username) != is_on:
                 last_status.setdefault(guild_id, {})[username] = is_on
                 if is_on:
-                    await send_embed(channel, username, image, title)
+                    await send_embed(channel, username, preview, title, viewers)
 
 
 # ---------- Slash Commands ---------- #
@@ -1090,18 +1092,18 @@ async def listtiktok(interaction: discord.Interaction):
         await interaction.response.send_message("📺 TikTok ที่ติดตาม:\n• " + "\n• ".join(users), ephemeral=True)
 
 
-@bot.tree.command(name="testtiktok", description="ทดสอบการแจ้งไลฟ์ TikTok")
-@app_commands.describe(username="ชื่อผู้ใช้ TikTok (ไม่ต้องมี @)")
+@bot.tree.command(name="testtiktok", description="ทดสอบแจ้งเตือนไลฟ์ TikTok")
+@app_commands.describe(username="ชื่อผู้ใช้ TikTok")
 async def testtiktok(interaction: discord.Interaction, username: str):
-    await interaction.response.defer(ephemeral=True)
-    preview_url = "https://link.to/fake-thumbnail.jpg"  # หรือจะดึงจริงก็ได้
-    url = f"https://www.tiktok.com/@{username}/live"
-    channel = bot.get_channel(get_guild_data(interaction.guild.id).get("channel_id"))
-    if channel:
-        await send_embed(channel, username, preview_url)
-        await interaction.followup.send("✅ ทดสอบส่ง Embed เรียบร้อย!", ephemeral=True)
+    channel = interaction.channel
+    is_on, preview_url, stream_title, viewers = await is_live(username)
+    if is_on:
+        await send_embed(channel, username, preview_url, stream_title, viewers)
+        await interaction.response.send_message("✅ ส่งข้อความเรียบร้อย", ephemeral=True)
     else:
-        await interaction.followup.send("❌ ยังไม่ได้ตั้งค่าห้องด้วย `/setchannel`", ephemeral=True)
+        await interaction.response.send_message("❌ ยังไม่ได้ไลฟ์", ephemeral=True)
+
+
 
 
 @bot.tree.command(name="setwelcome", description="ตั้งค่าระบบต้อนรับ")
