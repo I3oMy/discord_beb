@@ -1067,8 +1067,10 @@ async def check_tiktoks():
 @bot.tree.command(name="setchannel", description="เลือกห้องให้บอทแจ้งไลฟ์ TikTok")
 @app_commands.checks.has_permissions(administrator=True)
 async def setchannel(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)  # ป้องกันหมดเวลา
     set_channel(interaction.guild.id, interaction.channel.id)
-    await interaction.response.send_message("✅ ตั้งค่าห้องสำเร็จ!", ephemeral=True)
+    await interaction.followup.send("✅ ตั้งค่าห้องสำเร็จ!", ephemeral=True)
+
 
 @bot.tree.command(name="addtiktok", description="เพิ่มชื่อ TikTok ที่จะติดตาม")
 @app_commands.describe(username="ชื่อผู้ใช้ TikTok (ไม่ต้องมี @)")
