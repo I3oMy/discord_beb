@@ -1003,8 +1003,16 @@ async def is_live(username):
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
 
+            live_url = f"https://www.tiktok.com/@{username}/live"
             try:
-                await page.goto(f"https://www.tiktok.com/@{username}/live", timeout=15000)
+                response = await page.goto(live_url, timeout=15000)
+                final_url = page.url
+
+                if not final_url.endswith("/live"):
+                    # ถ้าเปลี่ยนลิงก์ แปลว่าไม่ได้ไลฟ์
+                    await browser.close()
+                    return False, None, None, None
+
                 html = await page.content()
             except Exception as e:
                 print(f"[ERROR] โหลด TikTok ไม่สำเร็จ: {e}")
@@ -1024,12 +1032,11 @@ async def is_live(username):
             match_viewers = re.search(r'{"viewerCount":(\d+)', html)
             viewers = int(match_viewers.group(1)) if match_viewers else 0
 
-            # ตรวจว่าไลฟ์อยู่ไหม
-            live = "LIVE" in html or "liveRoom" in html
-            return live, image, title, viewers
+            return True, image, title, viewers
     except Exception as e:
         print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
         return False, None, None, None
+
 
 
 
