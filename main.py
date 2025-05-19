@@ -1001,32 +1001,35 @@ async def is_live(username):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+            page = await context.new_page()
             url = f"https://www.tiktok.com/@{username}/live"
+
             try:
                 response = await page.goto(url, timeout=20000)
                 if response.status != 200:
                     print(f"[ERROR] HTTP {response.status} จาก {url}")
                     return False, None, None, None
 
-                # ตรวจสอบว่ามี "liveRoom" หรือ "LIVE" ใน HTML
                 html = await page.content()
-                if "liveRoom" not in html and "LIVE" not in html:
+
+                # DEBUG: ลองเขียนออกมาดู
+                # with open("debug.html", "w", encoding="utf-8") as f:
+                #     f.write(html)
+
+                # เช็คหลายคำมากขึ้น
+                if not any(keyword in html for keyword in ["liveRoom", "LIVE NOW", "tiktok live"]):
                     return False, None, None, None
 
-                # หัวข้อ
-                match_title = re.search(r'<meta property="og:title" content="(.*?)"', html)
-                title = match_title.group(1) if match_title else "Live on TikTok"
+                title = re.search(r'<meta property="og:title" content="(.*?)"', html)
+                preview = re.search(r'<meta property="og:image" content="(.*?)"', html)
+                viewers = re.search(r'{"viewerCount":(\d+)', html)
 
-                # รูป preview
-                match_img = re.search(r'<meta property="og:image" content="(.*?)"', html)
-                image = match_img.group(1) if match_img else None
-
-                # คนดู
-                match_viewers = re.search(r'{"viewerCount":(\d+)', html)
-                viewers = int(match_viewers.group(1)) if match_viewers else 0
-
-                return True, image, title, viewers
+                return True, (
+                    preview.group(1) if preview else None,
+                    title.group(1) if title else "Live on TikTok",
+                    int(viewers.group(1)) if viewers else 0
+                )
             except Exception as e:
                 print(f"[ERROR] โหลด TikTok ไม่สำเร็จ: {e}")
                 return False, None, None, None
@@ -1065,19 +1068,24 @@ async def send_embed(channel, username, preview, stream_title, viewers):
 @tasks.loop(minutes=1)
 async def check_tiktoks():
     config = load_config()
-    for guild_id, data in config.items():
-        guild_id = int(guild_id)
+    for guild_id_str, data in config.items():
+        guild_id = int(guild_id_str)
         channel = bot.get_channel(data.get("channel_id"))
         if not channel:
             continue
 
         usernames = data.get("tiktok_usernames", [])
         for username in usernames:
-            is_on, preview, title, viewers = await is_live(username)
-            if last_status.get(guild_id, {}).get(username) != is_on:
-                last_status.setdefault(guild_id, {})[username] = is_on
-                if is_on:
+            try:
+                is_on, preview, title, viewers = await is_live(username)
+                was_on = last_status.get(guild_id, {}).get(username, False)
+
+                if is_on and not was_on:
                     await send_embed(channel, username, preview, title, viewers)
+
+                last_status.setdefault(guild_id, {})[username] = is_on
+            except Exception as e:
+                print(f"[ERROR] ตรวจ {username} ใน {guild_id}: {e}")
 
 
 # ---------- Slash Commands ---------- #
