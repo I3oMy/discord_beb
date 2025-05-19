@@ -1001,50 +1001,35 @@ async def is_live(username):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+            context = await browser.new_context()
             page = await context.new_page()
+
             url = f"https://www.tiktok.com/@{username}/live"
+            response = await page.goto(url, timeout=20000)
 
-            try:
-                response = await page.goto(url, timeout=20000)
-                if response.status != 200:
-                    print(f"[ERROR] HTTP {response.status} จาก {url}")
-                    return False, None, None, None
-
-                html = await page.content()
-
-                # DEBUG: ลองเขียนออกมาดู
-                # with open("debug.html", "w", encoding="utf-8") as f:
-                #     f.write(html)
-
-                # เช็คหลายคำมากขึ้น
-                if not any(keyword in html for keyword in ["liveRoom", "LIVE NOW", "tiktok live"]):
-                    return False, None, None, None
-
-                title = re.search(r'<meta property="og:title" content="(.*?)"', html)
-                preview = re.search(r'<meta property="og:image" content="(.*?)"', html)
-                viewers = re.search(r'{"viewerCount":(\d+)', html)
-
-                return True, (
-                    preview.group(1) if preview else None,
-                    title.group(1) if title else "Live on TikTok",
-                    int(viewers.group(1)) if viewers else 0
-                )
-            except Exception as e:
-                print(f"[ERROR] โหลด TikTok ไม่สำเร็จ: {e}")
-                return False, None, None, None
-            finally:
+            # ตรวจว่า redirect กลับหน้าหลัก = ไม่ได้ไลฟ์
+            final_url = page.url
+            if "/live" not in final_url:
                 await browser.close()
+                return False, None, None, None
+
+            # ลองหา preview image จาก meta tag
+            try:
+                title = await page.locator('meta[property="og:title"]').get_attribute("content")
+                image = await page.locator('meta[property="og:image"]').get_attribute("content")
+            except:
+                title, image = "Live on TikTok", None
+
+            html = await page.content()
+            match_viewers = re.search(r'{"viewerCount":(\d+)', html)
+            viewers = int(match_viewers.group(1)) if match_viewers else 0
+
+            await browser.close()
+            return True, image, title, viewers
+
     except Exception as e:
         print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
         return False, None, None, None
-
-
-
-
-
-
-
 
 
 class WatchButton(View):
@@ -1119,20 +1104,22 @@ async def listtiktok(interaction: discord.Interaction):
         await interaction.response.send_message("📺 TikTok ที่ติดตาม:\n• " + "\n• ".join(users), ephemeral=True)
 
 
-@bot.tree.command(name="testtiktok", description="ทดสอบแจ้งเตือนไลฟ์ TikTok")
+@bot.tree.command(name="testtiktok", description="ทดสอบแจ้งเตือนไลฟ์ TikTok (จำลอง)")
 @app_commands.describe(username="ชื่อผู้ใช้ TikTok")
 async def testtiktok(interaction: discord.Interaction, username: str):
     await interaction.response.defer(thinking=True, ephemeral=True)
     try:
+        # ใช้ข้อมูลจำลอง
+        preview_url = "https://i.imgur.com/zJ6cFYh.jpeg"  # รูป preview ปลอม
+        stream_title = "🔴 LIVE: ทดสอบระบบแจ้งเตือน"
+        viewers = 1234
+
         channel = interaction.channel
-        is_on, preview_url, stream_title, viewers = await is_live(username)
-        if is_on:
-            await send_embed(channel, username, preview_url, stream_title, viewers)
-            await interaction.followup.send("✅ ส่งข้อความเรียบร้อย")
-        else:
-            await interaction.followup.send("❌ ยังไม่ได้ไลฟ์")
+        await send_embed(channel, username, preview_url, stream_title, viewers)
+        await interaction.followup.send("✅ ส่ง embed แจ้งเตือนจำลองเรียบร้อย", ephemeral=True)
     except Exception as e:
-        await interaction.followup.send(f"⚠️ เกิดข้อผิดพลาด: `{e}`")
+        await interaction.followup.send(f"⚠️ เกิดข้อผิดพลาด: `{e}`", ephemeral=True)
+
 
 
 
