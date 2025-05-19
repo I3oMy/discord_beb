@@ -1000,20 +1000,26 @@ def remove_tiktok(guild_id, username):
 async def is_live(username):
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu"
+                ]
+            )
             context = await browser.new_context()
             page = await context.new_page()
 
             url = f"https://www.tiktok.com/@{username}/live"
             response = await page.goto(url, timeout=20000)
 
-            # ตรวจว่า redirect กลับหน้าหลัก = ไม่ได้ไลฟ์
             final_url = page.url
             if "/live" not in final_url:
                 await browser.close()
                 return False, None, None, None
 
-            # ลองหา preview image จาก meta tag
             try:
                 title = await page.locator('meta[property="og:title"]').get_attribute("content")
                 image = await page.locator('meta[property="og:image"]').get_attribute("content")
@@ -1030,6 +1036,7 @@ async def is_live(username):
     except Exception as e:
         print(f"[CRITICAL] เกิดข้อผิดพลาดใน is_live(): {e}")
         return False, None, None, None
+
 
 
 class WatchButton(View):
