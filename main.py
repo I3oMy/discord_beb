@@ -1247,7 +1247,7 @@ async def previewout(interaction: discord.Interaction, user: discord.User = None
         return
 
     # ตรวจสอบว่า channel_id มีการตั้งค่าไว้หรือไม่
-    channel_id = data.get("channel_id")
+    channel_id = data.get("goodbye_channel_id")
     if not channel_id:
         await interaction.response.send_message("❌ ไม่พบช่องที่ตั้งค่าไว้สำหรับการออกจากเซิร์ฟเวอร์", ephemeral=True)
         return
